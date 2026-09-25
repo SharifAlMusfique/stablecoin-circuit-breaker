@@ -336,6 +336,10 @@
   .avatar { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; }
   .alert-item.amber .avatar { background: rgba(255, 165, 31, 0.15); color: var(--amber); box-shadow: 0 0 14px -4px var(--amber); }
   .alert-item.red .avatar { background: rgba(255, 79, 100, 0.15); color: var(--red); box-shadow: 0 0 14px -4px var(--red); }
+  .alert-item.ok { border-color: rgba(43, 227, 138, 0.4); }
+  .alert-item.ok .avatar { background: rgba(43, 227, 138, 0.15); color: var(--green); box-shadow: 0 0 14px -4px var(--green); }
+  .alert-item.info { border-color: rgba(177, 76, 240, 0.45); }
+  .alert-item.info .avatar { background: rgba(177, 76, 240, 0.15); color: var(--purple); box-shadow: 0 0 14px -4px var(--purple); }
   .alert-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; font-size: 0.9rem; }
   .alert-head b { font-weight: 600; }
   .alert-head time { margin-left: auto; font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
@@ -445,6 +449,108 @@
   .aud-table .st { margin-top: 0; }
   .aud-empty td { text-align: center; color: var(--muted); padding: 2.5rem 1rem; }
 
+  /* =========================================================
+     TIER 3: policy panel, treasury balances, approval modal
+     ========================================================= */
+  .respond-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+  .policy { padding: 1.25rem 1.4rem; }
+  .policy .card-head .btn { margin-left: auto; }
+  .rules { display: grid; gap: 0.75rem; }
+  .rule-row {
+    display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 1rem; align-items: center;
+    padding: 0.9rem 1rem; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised);
+  }
+  .rule-id {
+    display: grid; place-items: center; width: 44px; height: 44px; border-radius: 0.5rem;
+    font-family: var(--mono); font-weight: 700; color: var(--purple);
+    background: rgba(177, 76, 240, 0.12); border: 1px solid rgba(177, 76, 240, 0.4);
+  }
+  .rule-row b { display: block; font-weight: 600; line-height: 1.3; }
+  .rule-row p { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.86rem; line-height: 1.45; }
+  .rule-fields { display: flex; gap: 0.6rem; }
+  .field { display: flex; flex-direction: column; }
+  .field label { font-size: 0.72rem; font-weight: 500; letter-spacing: 0.02em; color: var(--muted); margin-bottom: 0.3rem; white-space: nowrap; }
+  .field input {
+    font: inherit; font-family: var(--mono); font-size: 0.95rem; color: var(--text);
+    background: var(--surface); border: 1px solid var(--line-2); border-radius: 0.5rem; padding: 7px 10px; width: 84px;
+    transition: border-color 0.2s;
+  }
+  .field input:focus { outline: 2px solid var(--blue); outline-offset: 2px; border-color: var(--blue); }
+  .field.wide input { width: 100%; font-size: 0.8rem; }
+  .policy-foot { margin: 0.9rem 0 0; font-size: 0.8rem; color: var(--dim); }
+
+  .treasury { padding: 1.25rem 1.4rem; }
+  .treasury .card-head .icon-btn { margin-left: auto; }
+  .bal-grid { display: grid; grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr); gap: 0.5rem; align-items: stretch; }
+  .bal-tile { padding: 0.9rem 1rem; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); min-width: 0; }
+  .bal-tile .who { font-size: 0.72rem; letter-spacing: 0.12em; font-weight: 700; color: var(--muted); }
+  .bal-tile .amt { font-family: var(--mono); font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin: 0.25rem 0; overflow-wrap: anywhere; }
+  .bal-tile .unit { font-size: 0.75rem; color: var(--muted); }
+  .bal-tile a { font-family: var(--mono); font-size: 0.75rem; color: var(--purple); text-decoration: none; }
+  .bal-tile a:hover { text-decoration: underline; }
+  .bal-tile.safe { border-color: rgba(43, 227, 138, 0.35); }
+  .bal-arrow { display: grid; place-items: center; color: var(--dim); }
+  .delta { display: inline-block; font-family: var(--mono); font-size: 0.75rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-left: 0.3rem; vertical-align: middle; }
+  .delta.down { color: var(--red); background: rgba(255, 79, 100, 0.12); }
+  .delta.up { color: var(--green); background: rgba(43, 227, 138, 0.12); }
+  .treasury-status { display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.9rem; font-size: 0.84rem; color: var(--muted); }
+  .treasury-status .ic { margin-top: 2px; }
+  .treasury-status.ok { color: var(--green); }
+  .treasury-status.warn { color: #ffc875; }
+  details.setup { margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 0.9rem; }
+  details.setup summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; color: var(--blue); list-style: none; display: flex; align-items: center; gap: 0.4rem; }
+  details.setup summary::-webkit-details-marker { display: none; }
+  details.setup[open] summary .ic { transform: rotate(90deg); }
+  details.setup summary .ic { transition: transform 0.2s; }
+  .setup-form { display: grid; gap: 0.7rem; margin-top: 0.9rem; }
+  .setup-form p { margin: 0; font-size: 0.8rem; color: var(--muted); }
+  .setup-actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+  .setup-msg { font-size: 0.8rem; }
+  .setup-msg.err { color: var(--red); }
+  .setup-msg.ok { color: var(--green); }
+
+  /* Approval modal (z-index 300) */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; padding: 1.5rem;
+    background: rgba(5, 6, 10, 0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    animation: fade 0.2s ease-out both;
+  }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .modal {
+    width: min(620px, 100%); max-height: calc(100dvh - 3rem); overflow-y: auto; padding: 1.6rem;
+    position: relative; border-color: rgba(255, 79, 100, 0.55);
+    box-shadow: 0 0 0 1px rgba(255, 79, 100, 0.15), 0 0 60px -12px rgba(255, 79, 100, 0.55), 0 24px 60px rgba(0, 0, 0, 0.6);
+    animation: enter 0.42s var(--ease) both;
+  }
+  .modal::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: linear-gradient(90deg, var(--red), var(--purple)); border-radius: 8px 8px 0 0; }
+  .modal-top { display: flex; align-items: center; gap: 0.6rem; }
+  .modal-top .kick { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.14em; color: var(--red); }
+  .countdown { margin-left: auto; font-family: var(--mono); font-size: 1.4rem; font-weight: 700; }
+  .countdown.urgent { color: var(--red); }
+  .cd-track { height: 6px; border-radius: 3px; background: var(--deep); overflow: hidden; margin: 0.75rem 0 1.1rem; }
+  .cd-track div { height: 100%; background: linear-gradient(90deg, var(--amber), var(--red)); transform-origin: left; }
+  .modal h2 { font-size: 1.6rem; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 0.4rem; }
+  .modal .why { margin: 0 0 1.2rem; color: var(--muted); }
+  .flow { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 0.75rem; align-items: center; margin-bottom: 1.1rem; }
+  .flow .bal-tile { text-align: center; }
+  .flow .move {
+    display: flex; flex-direction: column; align-items: center; gap: 0.2rem; color: var(--blue);
+    font-family: var(--mono); font-weight: 700; font-size: 0.95rem; text-align: center;
+  }
+  .flow .move small { font-family: var(--font); font-weight: 500; font-size: 0.72rem; color: var(--muted); }
+  .ap-status { display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.8rem 0.9rem; border-radius: var(--radius); background: var(--raised); border: 1px solid var(--line-2); font-size: 0.9rem; margin-bottom: 1.1rem; }
+  .ap-status .ic, .ap-status .pulse-dot { margin-top: 4px; flex: none; }
+  .ap-status.ok { border-color: rgba(43, 227, 138, 0.5); color: var(--green); }
+  .ap-status.bad { border-color: rgba(255, 79, 100, 0.5); color: var(--red); }
+  .ap-status.info { color: var(--blue); }
+  .ap-status a { color: var(--cyan); font-weight: 600; }
+  .ap-status span.txt { color: var(--text); }
+  .ap-actions { display: flex; gap: 0.75rem; justify-content: flex-end; flex-wrap: wrap; }
+  .btn-danger { background: transparent; border-color: rgba(255, 79, 100, 0.6); color: var(--red); }
+  .btn-danger:hover { background: rgba(255, 79, 100, 0.1); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+  .ap-foot { margin: 1rem 0 0; font-size: 0.78rem; color: var(--dim); }
+
   /* ---------- Toast (z-index 500) ---------- */
   .toast {
     position: fixed; right: 1.5rem; bottom: 1.5rem; z-index: 500; max-width: 420px;
@@ -471,6 +577,7 @@
     .board { grid-template-columns: 1fr; }
     .feed { position: static; }
     .method-grid { grid-template-columns: 1fr; }
+    .respond-grid { grid-template-columns: 1fr; }
     .nav-links { display: none; }
   }
   @media (max-width: 900px) {
@@ -483,6 +590,12 @@
     .live-mini .coin-dot, .badge.devnet, .wallet-chip .bal { display: none; }
     .tabs { display: flex; }
     .tab { flex: 1; justify-content: center; padding: 8px 10px; }
+    .rule-row { grid-template-columns: 44px minmax(0, 1fr); }
+    .rule-fields { grid-column: 2; }
+    .modal { padding: 1.2rem; }
+    .modal h2 { font-size: 1.3rem; }
+    .flow, .bal-grid { grid-template-columns: 1fr; }
+    .flow .move, .bal-arrow { transform: rotate(90deg); }
     .nav .container { gap: 0.75rem; }
     .logo small { display: none; }
     .tiles { grid-template-columns: 1fr; }
@@ -513,6 +626,7 @@
       <a href="#top" data-spy="top" class="active">Player</a>
       <a href="#board" data-spy="board" data-tab-link="board">Risk board</a>
       <a href="#board" data-spy="auditor" data-tab-link="auditor">Auditor view</a>
+      <a href="#respond" data-spy="respond">Policy</a>
       <a href="#method" data-spy="method">Method</a>
     </div>
     <div class="nav-right">
@@ -549,11 +663,11 @@
       <ol class="layers" aria-label="Product layers">
         <li class="layer live"><span class="layer-ic" data-icon="eye"></span><span><b>Detect</b><small>Live · Tier 1</small></span></li>
         <li class="sep" data-icon="chevron"></li>
-        <li class="layer locked"><span class="layer-ic" data-icon="lock"></span><span><b>Respond</b><small>Unlocks in Tier 3</small></span></li>
+        <li class="layer live"><span class="layer-ic" data-icon="zap"></span><span><b>Respond</b><small>Live · Tier 3</small></span></li>
         <li class="sep" data-icon="chevron"></li>
         <li class="layer live"><span class="layer-ic" data-icon="shield"></span><span><b>Prove</b><small>Live · Tier 2</small></span></li>
       </ol>
-      <div class="xp"><div class="xp-track"><div style="width:66.6%"></div></div>2 of 3 layers live</div>
+      <div class="xp"><div class="xp-track"><div style="width:100%"></div></div>3 of 3 layers live</div>
     </div>
 
     <!-- SCENARIO PLAYER -->
@@ -607,7 +721,7 @@
         <span class="kicker">DETECT · PROVE</span>
         <h2>Live risk board</h2>
       </div>
-      <p>Lights change instantly. An alert is logged only when a colour holds: amber for 3 simulated minutes, red for 5. Each alert is then signed and written to Solana devnet.</p>
+      <p>Lights change instantly. An alert is logged only when a colour holds: amber for <span class="v-amber">3</span> simulated minutes, red for <span class="v-red">5</span>. Each alert is then signed and written to Solana devnet.</p>
     </div>
     <div class="tabs" role="tablist" aria-label="Views">
       <button class="tab active" role="tab" data-tab="board" aria-selected="true"><span data-icon="activity" data-size="16"></span>Risk board</button>
@@ -672,6 +786,90 @@
     </div>
   </section>
 
+  <!-- 5. RESPOND (Tier 3): editable policy rules + treasury balances -->
+  <section class="block" id="respond">
+    <div class="section-head">
+      <div>
+        <span class="kicker">RESPOND</span>
+        <h2>Treasury policy</h2>
+      </div>
+      <p>Rules the firm agreed in advance. When one fires, the app proposes the action; a named person approves it with a wallet signature. Nothing moves without a signature.</p>
+    </div>
+    <div class="respond-grid">
+      <div class="card policy">
+        <div class="card-head">
+          <span data-icon="scroll"></span>
+          <h3>Rules</h3>
+          <span class="chip">editable</span>
+          <button class="btn btn-ghost btn-sm" id="policyReset"><span data-icon="reset" data-size="15"></span>Defaults</button>
+        </div>
+        <div class="rules">
+          <div class="rule-row">
+            <span class="rule-id">R1</span>
+            <div><b>Amber warning</b><p>A coin is amber (or worse) for the hold time. Notify the risk manager and log an alert. No funds move.</p></div>
+            <div class="rule-fields">
+              <div class="field"><label for="pAmber">Hold (sim min)</label><input id="pAmber" type="number" min="1" max="30" step="1"></div>
+            </div>
+          </div>
+          <div class="rule-row">
+            <span class="rule-id">R2</span>
+            <div><b>Red: propose a move</b><p>A coin is red for the hold time. Pause the simulation and propose moving part of that coin's holdings from TREASURY to SAFE. Needs a signed approval.</p></div>
+            <div class="rule-fields">
+              <div class="field"><label for="pRed">Hold (sim min)</label><input id="pRed" type="number" min="1" max="60" step="1"></div>
+              <div class="field"><label for="pMove">Move (%)</label><input id="pMove" type="number" min="1" max="100" step="1"></div>
+            </div>
+          </div>
+          <div class="rule-row">
+            <span class="rule-id">R3</span>
+            <div><b>No decision: escalate</b><p>Nobody approves or rejects in time. Log "escalated, no action taken". Nothing moves.</p></div>
+            <div class="rule-fields">
+              <div class="field"><label for="pWindow">Window (real min)</label><input id="pWindow" type="number" min="0.5" max="10" step="0.5"></div>
+            </div>
+          </div>
+        </div>
+        <p class="policy-foot">Changes apply from the next reading. Reloading the page restores the defaults (3 min, 5 min, 50%, 2 min). The approval window is in real minutes because the simulation is paused while it waits.</p>
+      </div>
+
+      <div class="card treasury">
+        <div class="card-head">
+          <span data-icon="vault"></span>
+          <h3>Treasury wallets</h3>
+          <span class="chip">devnet test token</span>
+          <button class="icon-btn" id="balRefresh" aria-label="Refresh balances" title="Refresh balances"><span data-icon="reset" data-size="15"></span></button>
+        </div>
+        <div class="bal-grid">
+          <div class="bal-tile">
+            <div class="who">TREASURY</div>
+            <div class="amt" id="balTreasury">—</div>
+            <div class="unit">test tokens <span id="dTreasury"></span></div>
+            <a id="lnkTreasury" target="_blank" rel="noopener"></a>
+          </div>
+          <div class="bal-arrow" data-icon="arrowRight"></div>
+          <div class="bal-tile safe">
+            <div class="who">SAFE</div>
+            <div class="amt" id="balSafe">—</div>
+            <div class="unit">test tokens <span id="dSafe"></span></div>
+            <a id="lnkSafe" target="_blank" rel="noopener"></a>
+          </div>
+        </div>
+        <div class="treasury-status" id="treasuryStatus"></div>
+        <details class="setup" id="setupBox">
+          <summary><span data-icon="chevron" data-size="15"></span>Setup: token and wallet addresses</summary>
+          <form class="setup-form" id="setupForm" autocomplete="off">
+            <p>Paste the <b>public</b> addresses from your devnet setup. Never paste a private key or seed phrase. They are saved in this browser only.</p>
+            <div class="field wide"><label for="sMint">Test token mint</label><input id="sMint" spellcheck="false" placeholder="Mint address"></div>
+            <div class="field wide"><label for="sTreasury">TREASURY wallet (import this one into Phantom)</label><input id="sTreasury" spellcheck="false" placeholder="Public address"></div>
+            <div class="field wide"><label for="sSafe">SAFE wallet</label><input id="sSafe" spellcheck="false" placeholder="Public address"></div>
+            <div class="setup-actions">
+              <button class="btn btn-primary btn-sm" type="submit">Save addresses</button>
+              <span class="setup-msg" id="setupMsg"></span>
+            </div>
+          </form>
+        </details>
+      </div>
+    </div>
+  </section>
+
   <!-- 8. METHOD: thresholds labelled as starting assumptions -->
   <section class="block" id="method">
     <div class="section-head">
@@ -709,7 +907,7 @@
       </div>
       <div class="notes">
         <div class="card note"><span class="n-ic" data-icon="layers"></span><div><b>Overall rating = the worst signal</b><p>If any one warning light is red, the coin is red. Conservative, and easy to explain.</p></div></div>
-        <div class="card note"><span class="n-ic" data-icon="timer"></span><div><b>Time-in-colour rule</b><p>An alert is logged only when amber (or worse) holds for 3 simulated minutes (rule R1), or red holds for 5 (rule R2).</p></div></div>
+        <div class="card note"><span class="n-ic" data-icon="timer"></span><div><b>Time-in-colour rule</b><p>An alert is logged only when amber (or worse) holds for <span class="v-amber">3</span> simulated minutes (rule R1), or red holds for <span class="v-red">5</span> (rule R2). Rule R2 then proposes a treasury move for approval.</p></div></div>
         <div class="card note"><span class="n-ic" data-icon="repeat"></span><div><b>One alert per episode</b><p>Each level alerts once. The episode ends when the coin has been green again for 5 simulated minutes.</p></div></div>
         <div class="card note"><span class="n-ic" data-icon="info"></span><div><b>Honest limits</b><p>Simulated data, one reading per simulated minute. It flags stress; it does not predict depegs. Thresholds would be calibrated against past events.</p></div></div>
       </div>
@@ -723,6 +921,11 @@
     <span>Shortcuts: <kbd>Space</kbd> play / pause · <kbd>R</kbd> reset · <kbd>1</kbd>–<kbd>4</kbd> scenario A–D</span>
   </div>
 </footer>
+
+<!-- 5b. APPROVAL CARD (Tier 3): shown as a modal when rule R2 fires. Filled in by JavaScript. -->
+<div class="modal-backdrop" id="approval" hidden>
+  <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="apTitle" tabindex="-1" id="approvalCard"></div>
+</div>
 
 <!-- Finish summary (toast) -->
 <div class="toast" id="toast" role="status" aria-live="polite">
@@ -958,9 +1161,11 @@ function simIso(scn, idx) {
 }
 // Memo format (kept exactly as specified, ready for Tier 2):
 // CB|v1|<EVENT>|<COIN>|<RATING>|<detail>|rule=<id>|sim=<ISO>|scn=<A-D>
+// <detail> is "dev=<deviation%>" for alerts, or e.detail for other events (e.g. "move=50%", "amount=5000|to=SAFE").
 function buildMemo(e) {
   const dev = (e.devPct >= 0 ? '' : '-') + Math.abs(e.devPct).toFixed(2);
-  return ['CB', 'v1', e.event, e.coin, e.rating, `dev=${dev}`, `rule=${e.rule}`, `sim=${e.simIso}`, `scn=${e.scn}`].join('|');
+  const detail = e.detail || `dev=${dev}`;
+  return ['CB', 'v1', e.event, e.coin, e.rating, detail, `rule=${e.rule}`, `sim=${e.simIso}`, `scn=${e.scn}`].join('|');
 }
 
 // Run a whole scenario without the screen (used for testing).
@@ -1010,6 +1215,12 @@ const ICON_PATHS = {
   external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
   shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+  zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+  scroll: '<path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>',
+  vault: '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="12" cy="12" r="3"/><path d="m7.9 7.9 1.9 1.9"/><path d="m16.1 7.9-1.9 1.9"/><path d="m7.9 16.1 1.9-1.9"/><path d="m16.1 16.1-1.9-1.9"/>',
+  arrowRight: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  swap: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
 };
 function icon(name, size = 18) {
   return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
@@ -1079,7 +1290,7 @@ function buildCards() {
       </div>
       <div class="meter">
         <div class="meter-text"><span id="hold-${c.symbol}">No warning colour held</span><b>ALERT METER</b></div>
-        <div class="segs" id="segs-${c.symbol}">${'<i></i>'.repeat(CONFIG.RED_HOLD)}</div>
+        <div class="segs" id="segs-${c.symbol}">${'<i></i>'.repeat(Math.max(CONFIG.AMBER_HOLD, CONFIG.RED_HOLD))}</div>
       </div>
     </article>`).join('');
 }
@@ -1350,6 +1561,8 @@ function renderWallet() {
       </button>`;
   }
   renderChainHint();
+  renderTreasury();        // Tier 3: "is TREASURY connected?" line
+  renderApproval();
 }
 // The small line of help text under the "Record alerts on Solana devnet" switch.
 function renderChainHint() {
@@ -1376,59 +1589,88 @@ function initWallet(retry = true) {
     .catch(() => {});
 }
 
-// ---------- Memo transactions ----------
-// Alerts are sent one at a time, in order, so Phantom never gets two popups at once.
-let chainQueue = Promise.resolve();
+// ---------- Transactions ----------
+// Why nothing can go on-chain right now ('' means it can).
+function chainBlocker() {
+  if (!solanaReady()) return 'Solana library offline';
+  if (!recordingOn()) return 'recording switched off';
+  if (!wallet.address) return 'wallet not connected';
+  return '';
+}
+// A Memo instruction: writes a short text note into the transaction, signed by `signer`.
+function memoIx(text, signer) {
+  return new solanaWeb3.TransactionInstruction({
+    programId: new solanaWeb3.PublicKey(SOLANA.MEMO_PROGRAM_ID),
+    keys: [{ pubkey: signer, isSigner: true, isWritable: false }],
+    data: new TextEncoder().encode(text),
+  });
+}
+// Alerts: one memo per transaction.
 function recordOnChain(e) {
-  if (!solanaReady()) return setStatus(e, 'none', 'Solana library offline');
-  if (!recordingOn()) return setStatus(e, 'none', 'recording switched off');
-  if (!wallet.address) return setStatus(e, 'none', 'wallet not connected');
-  setStatus(e, 'pending', 'waiting for Phantom signature');
-  chainQueue = chainQueue.then(() => sendMemo(e)).catch(() => {});
+  const blocked = chainBlocker();
+  if (blocked) return setStatus(e, 'none', blocked);
+  queueTx([e], signer => [memoIx(e.memo, signer)]);
+}
+// Transactions go one at a time, in order, so Phantom never shows two popups at once.
+let chainQueue = Promise.resolve();
+function queueTx(events, buildIxs, hooks = {}) {
+  events.forEach(e => setStatus(e, 'pending', 'waiting for Phantom signature'));
+  const job = chainQueue.then(() => sendTx(events, buildIxs, hooks));
+  chainQueue = job.catch(() => {});
+  return job;
 }
 function withTimeout(promise, ms, message) {
   let t;
   const timeout = new Promise((_, reject) => { t = setTimeout(() => reject(new Error(message)), ms); });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
 }
-// Build ONE transaction with a Memo instruction, have Phantom sign it, send it to devnet, confirm it.
-async function sendMemo(e) {
-  if (!wallet.address) return setStatus(e, 'none', 'wallet disconnected');
-  const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+// Build ONE transaction from buildIxs(signer), have Phantom sign it, send it to devnet, confirm it.
+// Every event in `events` shares this transaction and its status.
+// Returns { result: 'confirmed' | 'failed' | 'declined' | 'error', signature, message }.
+async function sendTx(events, buildIxs, hooks) {
+  const setAll = (status, note) => events.forEach(e => setStatus(e, status, note));
+  if (!wallet.address) { setAll('none', 'wallet disconnected'); return { result: 'error', message: 'wallet disconnected' }; }
+  if (hooks.onSigning) hooks.onSigning();
   const conn = getConnection();
-  const signer = new PublicKey(wallet.address);
+  const signer = new solanaWeb3.PublicKey(wallet.address);
   let signed, latest;
   try {
+    const ixs = await buildIxs(signer);
     latest = await conn.getLatestBlockhash('confirmed');
-    const tx = new Transaction({ feePayer: signer, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight });
-    tx.add(new TransactionInstruction({
-      programId: new PublicKey(SOLANA.MEMO_PROGRAM_ID),
-      keys: [{ pubkey: signer, isSigner: true, isWritable: false }],
-      data: new TextEncoder().encode(e.memo),
-    }));
+    const tx = new solanaWeb3.Transaction({ feePayer: signer, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight });
+    ixs.forEach(ix => tx.add(ix));
     signed = await withTimeout(wallet.provider.signTransaction(tx), SOLANA.SIGN_TIMEOUT_MS, 'no signature within 90 s');
   } catch (err) {
     const declined = err && (err.code === 4001 || /reject|declin|cancel/i.test(err.message || ''));
-    return setStatus(e, 'none', declined ? 'signature declined' : shortError(err));
+    const message = declined ? 'signature declined' : shortError(err);
+    setAll('none', message);
+    return { result: declined ? 'declined' : 'error', message };
   }
-  e.signer = wallet.address;
+  let signature = null;
   try {
-    e.signature = await conn.sendRawTransaction(signed.serialize());
-    setStatus(e, 'pending', 'confirming on devnet');
+    signature = await conn.sendRawTransaction(signed.serialize());
+    events.forEach(e => { e.signer = wallet.address; e.signature = signature; });
+    setAll('pending', 'confirming on devnet');
+    if (hooks.onSent) hooks.onSent(signature);
     const res = await conn.confirmTransaction(
-      { signature: e.signature, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight }, 'confirmed');
+      { signature, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight }, 'confirmed');
     if (res.value.err) throw new Error('transaction error ' + JSON.stringify(res.value.err));
-    setStatus(e, 'confirmed', '');
+    setAll('confirmed', '');
+    return { result: 'confirmed', signature };
   } catch (err) {
     // Nothing landed on-chain -> "not on-chain". Landed but did not confirm -> "failed".
-    if (!e.signature) e.signer = null;
-    setStatus(e, e.signature ? 'failed' : 'none', shortError(err));
+    const message = shortError(err);
+    setAll(signature ? 'failed' : 'none', message);
+    return { result: signature ? 'failed' : 'error', signature, message };
+  } finally {
+    refreshBalance();
   }
-  refreshBalance();
 }
 function shortError(err) {
   const msg = (err && err.message) || String(err);
-  if (/prior credit|insufficient/i.test(msg)) return 'wallet has no devnet SOL (faucet.solana.com)';
+  if (/prior credit|insufficient lamports|insufficient funds for fee/i.test(msg)) return 'wallet has no devnet SOL (faucet.solana.com)';
+  if (/custom program error: 0x1\b/i.test(msg)) return 'not enough test tokens in TREASURY';
+  if (/custom program error: 0x4\b|owner does not match/i.test(msg)) return 'connected wallet does not own the TREASURY tokens';
   if (/blockhash not found|expired/i.test(msg)) return 'expired before confirming';
   if (/failed to fetch|networkerror/i.test(msg)) return 'devnet RPC unreachable';
   return msg.length > 90 ? msg.slice(0, 90) + '…' : msg;
@@ -1483,6 +1725,7 @@ async function recheckPending() {
   } catch (err) { /* try again next reload */ }
 }
 function plainSentence(e) {
+  if (e.text) return e.text;
   return `${e.coin} ${e.rating === 'RED' ? 'held red' : 'held amber or worse'} for ${e.held} simulated minutes. ${e.reason}.`;
 }
 function renderAuditor() {
@@ -1536,6 +1779,470 @@ function setNavActive(section) {
   document.querySelectorAll('.nav-links a').forEach(l => l.classList.toggle('active', l.dataset.spy === key));
 }
 
+// =====================================================================
+// TIER 3: treasury wallets, policy rules R1–R3, approval + token move
+// =====================================================================
+
+// Paste PUBLIC addresses from the Friday setup here, or use the Setup form in the app
+// (the form's values are saved in this browser and take priority). Never paste private keys.
+const TREASURY_SETUP = {
+  TEST_TOKEN_MINT: '',
+  TREASURY_WALLET: '',
+  SAFE_WALLET: '',
+  TOKEN_DECIMALS: 6,     // fallback only: the real value is read from the mint on devnet
+};
+const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const ATA_PROGRAM_ID = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
+const SETUP_KEY = 'cb.treasury.v1';
+
+const treasury = {
+  mint: '', treasury: '', safe: '',
+  decimals: TREASURY_SETUP.TOKEN_DECIMALS,
+  tokenProgram: null,                     // read from the mint (classic Token or Token-2022)
+  raw: { treasury: null, safe: null },    // balances in the token's smallest unit (BigInt); null = unknown
+  delta: { treasury: null, safe: null },  // change from the last move (before/after chips)
+  error: '',
+};
+const setupComplete = () => !!(treasury.mint && treasury.treasury && treasury.safe);
+
+function loadSetup() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(SETUP_KEY) || '{}'); } catch (err) { saved = {}; }
+  treasury.mint = saved.mint || TREASURY_SETUP.TEST_TOKEN_MINT;
+  treasury.treasury = saved.treasury || TREASURY_SETUP.TREASURY_WALLET;
+  treasury.safe = saved.safe || TREASURY_SETUP.SAFE_WALLET;
+  $('sMint').value = treasury.mint;
+  $('sTreasury').value = treasury.treasury;
+  $('sSafe').value = treasury.safe;
+  if (!setupComplete()) $('setupBox').open = true;
+}
+function saveSetup(ev) {
+  ev.preventDefault();
+  const vals = { mint: $('sMint').value.trim(), treasury: $('sTreasury').value.trim(), safe: $('sSafe').value.trim() };
+  const msg = $('setupMsg');
+  const fail = text => { msg.className = 'setup-msg err'; msg.textContent = text; };
+  if (!vals.mint || !vals.treasury || !vals.safe) return fail('Please fill in all three addresses.');
+  if (solanaReady()) {
+    for (const [name, v] of Object.entries(vals)) {
+      try { new solanaWeb3.PublicKey(v); } catch (err) { return fail(`The ${name} address is not a valid Solana address.`); }
+    }
+  }
+  if (vals.treasury === vals.safe) return fail('TREASURY and SAFE must be different wallets.');
+  try { localStorage.setItem(SETUP_KEY, JSON.stringify(vals)); } catch (err) { /* still used for this visit */ }
+  Object.assign(treasury, vals, { tokenProgram: null, raw: { treasury: null, safe: null }, delta: { treasury: null, safe: null } });
+  msg.className = 'setup-msg ok';
+  msg.textContent = 'Saved. Reading balances from devnet…';
+  refreshTreasury().then(() => { msg.textContent = treasury.error ? '' : 'Saved. Balances loaded.'; });
+}
+
+// The associated token account (ATA): the standard account that holds `mint` tokens for `owner`.
+function ataFor(owner, mint, programId) {
+  const { PublicKey } = solanaWeb3;
+  return PublicKey.findProgramAddressSync(
+    [new PublicKey(owner).toBytes(), new PublicKey(programId).toBytes(), new PublicKey(mint).toBytes()],
+    new PublicKey(ATA_PROGRAM_ID))[0];
+}
+// Read the mint once: which token program owns it, and its real number of decimals.
+async function loadMintInfo() {
+  if (treasury.tokenProgram) return;
+  const info = await getConnection().getParsedAccountInfo(new solanaWeb3.PublicKey(treasury.mint));
+  if (!info.value) throw new Error('Test token mint not found on devnet. Check the mint address.');
+  treasury.tokenProgram = info.value.owner.toBase58();
+  const parsed = info.value.data && info.value.data.parsed;
+  if (parsed && parsed.info && typeof parsed.info.decimals === 'number') treasury.decimals = parsed.info.decimals;
+}
+async function readTokenBalance(owner) {
+  try {
+    const res = await getConnection().getTokenAccountBalance(ataFor(owner, treasury.mint, treasury.tokenProgram));
+    return BigInt(res.value.amount);
+  } catch (err) {
+    if (/could not find account/i.test(err.message || '')) return 0n;   // no token account yet = 0
+    throw err;
+  }
+}
+async function refreshTreasury() {
+  treasury.error = '';
+  if (setupComplete() && solanaReady()) {
+    try {
+      await loadMintInfo();
+      const [t, s] = await Promise.all([readTokenBalance(treasury.treasury), readTokenBalance(treasury.safe)]);
+      treasury.raw = { treasury: t, safe: s };
+    } catch (err) {
+      treasury.error = shortError(err);
+    }
+  }
+  renderTreasury();
+}
+
+// Token amounts: 5000000000n (smallest units, 6 decimals) -> "5,000"
+function fmtTokens(raw) {
+  if (raw === null || raw === undefined) return '—';
+  const neg = raw < 0n, abs = neg ? -raw : raw, base = 10n ** BigInt(treasury.decimals);
+  let s = (abs / base).toLocaleString('en-US');
+  const frac = abs % base;
+  if (frac) s += '.' + frac.toString().padStart(treasury.decimals, '0').slice(0, 2).replace(/0+$/, '');
+  return (neg ? '−' : '') + s;
+}
+// Same, without commas, for memos: "5000" or "5000.5"
+function tokensPlain(raw) {
+  const base = 10n ** BigInt(treasury.decimals), frac = raw % base;
+  return (raw / base).toString() + (frac ? '.' + frac.toString().padStart(treasury.decimals, '0').replace(/0+$/, '') : '');
+}
+function renderTreasury() {
+  $('balTreasury').textContent = fmtTokens(treasury.raw.treasury);
+  $('balSafe').textContent = fmtTokens(treasury.raw.safe);
+  const chip = d => (d ? `<span class="delta ${d < 0n ? 'down' : 'up'}">${d > 0n ? '+' : ''}${fmtTokens(d)}</span>` : '');
+  $('dTreasury').innerHTML = chip(treasury.delta.treasury);
+  $('dSafe').innerHTML = chip(treasury.delta.safe);
+  [['lnkTreasury', treasury.treasury], ['lnkSafe', treasury.safe]].forEach(([id, addr]) => {
+    $(id).textContent = addr ? shortAddr(addr) : '';
+    if (addr) $(id).href = addrUrl(addr); else $(id).removeAttribute('href');
+  });
+  // One line saying whether an approval can actually move tokens right now.
+  let tone = 'warn', text;
+  if (!setupComplete()) text = 'Setup needed: paste the test token mint, TREASURY and SAFE addresses below. Until then, approvals are recorded but no tokens move.';
+  else if (!solanaReady()) text = 'Solana library offline: balances cannot be read.';
+  else if (treasury.error) text = treasury.error;
+  else if (!wallet.address) text = 'Connect the TREASURY wallet in Phantom so an approval can move tokens.';
+  else if (wallet.address !== treasury.treasury) text = `Connected wallet ${shortAddr(wallet.address)} is not TREASURY. Approvals will be signed and recorded, but tokens only move when TREASURY signs.`;
+  else { tone = 'ok'; text = 'Ready: TREASURY is connected and can sign a move.'; }
+  $('treasuryStatus').className = 'treasury-status ' + tone;
+  $('treasuryStatus').innerHTML = icon(tone === 'ok' ? 'check' : 'info', 15) + `<span>${escapeHtml(text)}</span>`;
+}
+
+// SPL token instructions, built by hand (no extra library needed).
+function createAtaIdempotentIx(payer, ata, owner, mint, tokenProgram) {
+  return new solanaWeb3.TransactionInstruction({
+    programId: new solanaWeb3.PublicKey(ATA_PROGRAM_ID),
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: ata, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: false, isWritable: false },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: tokenProgram, isSigner: false, isWritable: false },
+    ],
+    data: Uint8Array.of(1),                  // 1 = "create if it does not exist yet"
+  });
+}
+function transferCheckedIx(source, mint, dest, owner, amount, decimals, tokenProgram) {
+  const data = new Uint8Array(10);
+  data[0] = 12;                              // 12 = TransferChecked
+  new DataView(data.buffer).setBigUint64(1, amount, true);   // amount, little-endian
+  data[9] = decimals;
+  return new solanaWeb3.TransactionInstruction({
+    programId: tokenProgram,
+    keys: [
+      { pubkey: source, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: dest, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: true, isWritable: false },
+    ],
+    data,
+  });
+}
+// The two instructions that move `amount` test tokens from TREASURY to SAFE (signer = TREASURY).
+async function moveIxs(signer, amount) {
+  await loadMintInfo();
+  const { PublicKey } = solanaWeb3;
+  const mint = new PublicKey(treasury.mint), prog = new PublicKey(treasury.tokenProgram);
+  const from = ataFor(treasury.treasury, treasury.mint, treasury.tokenProgram);
+  const to = ataFor(treasury.safe, treasury.mint, treasury.tokenProgram);
+  return [
+    createAtaIdempotentIx(signer, to, new PublicKey(treasury.safe), mint, prog),
+    transferCheckedIx(from, mint, to, signer, amount, treasury.decimals, prog),
+  ];
+}
+
+// ---------- Policy rules R1–R3 (editable) ----------
+const POLICY_DEFAULTS = { amberHold: 3, redHold: 5, movePct: 50, windowMin: 2 };
+const policy = { ...POLICY_DEFAULTS };
+function applyPolicy() {
+  CONFIG.AMBER_HOLD = policy.amberHold;     // the risk engine reads these on every reading
+  CONFIG.RED_HOLD = policy.redHold;
+  $('pAmber').value = policy.amberHold;
+  $('pRed').value = policy.redHold;
+  $('pMove').value = policy.movePct;
+  $('pWindow').value = policy.windowMin;
+  document.querySelectorAll('.v-amber').forEach(el => { el.textContent = policy.amberHold; });
+  document.querySelectorAll('.v-red').forEach(el => { el.textContent = policy.redHold; });
+  buildCards();
+  state.lastLevel = {};
+  renderCards();
+  if ($('log').querySelector('.empty')) resetLog();
+}
+function readPolicyInputs() {
+  const num = (id, lo, hi, fallback) => {
+    const v = parseFloat($(id).value);
+    return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
+  };
+  policy.amberHold = Math.round(num('pAmber', 1, 30, policy.amberHold));
+  policy.redHold = Math.round(num('pRed', 1, 60, policy.redHold));
+  policy.movePct = Math.round(num('pMove', 1, 100, policy.movePct));
+  policy.windowMin = Math.round(num('pWindow', 0.5, 10, policy.windowMin) * 2) / 2;
+  applyPolicy();
+}
+
+// ---------- Events other than alerts (PROPOSED, APPROVED, REJECTED, ESCALATED, MOVED) ----------
+function makeEvent(event, base, extra) {
+  const e = { id: newId(), event, ...base, ...extra, status: 'none', note: '', signer: null, signature: null, loggedAt: new Date().toISOString() };
+  e.memo = buildMemo(e);
+  return e;
+}
+function logEvent(e, status, note) {
+  auditLog.push(e);
+  addLogItem(e);
+  setStatus(e, status, note);
+}
+
+// ---------- Approval card (rule R2) ----------
+const approval = { active: null };   // the proposal waiting for a decision, if any
+
+function openProposal(coin, a) {
+  // Pause the simulation (Play stays blocked until there is a decision).
+  state.playing = false;
+  clearInterval(timer);
+  setPlayButtons(false);
+  const base = { coin, rating: 'RED', rule: 'R2', devPct: a.devPct, date: simDate(state.scn, state.idx),
+                 simIso: simIso(state.scn, state.idx), scn: state.scn.id };
+  const p = {
+    coin, reason: a.reason, pct: policy.movePct, base, phase: 'loading', outcome: '', msg: '',
+    amountRaw: null, before: null, signature: null, signer: null,
+    remainingMs: policy.windowMin * 60000, deadline: 0, timer: null,
+  };
+  p.proposed = makeEvent('PROPOSED', base, {
+    detail: `move=${p.pct}%`,
+    text: `Rule R2 proposes moving ${p.pct}% of ${coin} holdings from TREASURY to SAFE. Waiting for a signed decision.`,
+  });
+  logEvent(p.proposed, 'pending', 'awaiting decision');
+  approval.active = p;
+  $('approval').hidden = false;
+  renderApproval();
+  $('approvalCard').focus();
+  startCountdown();
+  // Work out the amount from TREASURY's live balance on devnet.
+  refreshTreasury().then(() => {
+    if (approval.active !== p) return;
+    if (treasury.raw.treasury !== null && !treasury.error) {
+      p.before = { ...treasury.raw };
+      p.amountRaw = treasury.raw.treasury * BigInt(p.pct) / 100n;
+    }
+    if (p.phase === 'loading') p.phase = 'waiting';
+    renderApproval();
+  });
+}
+
+// Why tokens cannot move for this proposal ('' means they can).
+function moveBlocker(p) {
+  if (!setupComplete()) return 'the token and wallet addresses are not set up yet';
+  if (!solanaReady()) return 'the Solana library is offline';
+  if (treasury.error) return treasury.error;
+  if (!recordingOn()) return 'on-chain recording is switched off';
+  if (!wallet.address) return 'no wallet is connected';
+  if (wallet.address !== treasury.treasury) return 'the connected wallet is not TREASURY';
+  if (p.amountRaw === null) return "TREASURY's balance is unknown";
+  if (p.amountRaw <= 0n) return 'TREASURY holds no test tokens';
+  return '';
+}
+
+function startCountdown() {
+  const p = approval.active;
+  p.deadline = performance.now() + p.remainingMs;
+  clearInterval(p.timer);
+  p.timer = setInterval(tickCountdown, 200);
+  tickCountdown();
+}
+function pauseCountdown() {
+  const p = approval.active;
+  clearInterval(p.timer);
+  p.remainingMs = Math.max(0, p.deadline - performance.now());
+}
+const fmtCountdown = ms => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${pad(s % 60)}`; };
+function tickCountdown() {
+  const p = approval.active;
+  if (!p) return;
+  const left = Math.max(0, p.deadline - performance.now());
+  p.remainingMs = left;
+  const cd = $('apCountdown'), bar = $('apBar');
+  if (cd) { cd.textContent = fmtCountdown(left); cd.classList.toggle('urgent', left < 30000); }
+  if (bar) bar.style.transform = `scaleX(${left / (policy.windowMin * 60000)})`;
+  if (left <= 0) { clearInterval(p.timer); escalate(); }
+}
+
+// Approve or Reject. ONE Phantom signature records the proposal and the decision
+// (and, on approval, moves the tokens) in a single devnet transaction.
+async function decide(kind) {
+  const p = approval.active;
+  if (!p || (p.phase !== 'waiting' && p.phase !== 'loading')) return;
+  pauseCountdown();
+  const approve = kind === 'approve';
+  const blocker = moveBlocker(p);
+  const decision = makeEvent(approve ? 'APPROVED' : 'REJECTED', p.base, {
+    detail: `move=${p.pct}%`,
+    text: approve ? `Decision: approve moving ${p.pct}% of ${p.coin} holdings to SAFE.` : 'Decision: reject the proposed move. Nothing moves.',
+  });
+  const moved = approve && !blocker ? makeEvent('MOVED', p.base, {
+    detail: `amount=${tokensPlain(p.amountRaw)}|to=SAFE`,
+    text: `${fmtTokens(p.amountRaw)} test tokens moved from TREASURY to SAFE.`,
+  }) : null;
+  p.approved = approve;
+  p.moveNote = blocker;
+
+  // No wallet / recording off: keep the demo going, record the decision in this browser only.
+  const offline = chainBlocker();
+  if (offline) {
+    setStatus(p.proposed, 'none', offline);
+    logEvent(decision, 'none', offline + ', nothing moved');
+    return finishDecision('local', offline);
+  }
+
+  p.phase = 'queued';
+  p.msg = '';
+  renderApproval();
+  const events = [p.proposed, decision, moved].filter(Boolean);
+  const res = await queueTx(events, async signer => {
+    const ixs = [memoIx(p.proposed.memo, signer), memoIx(decision.memo, signer)];
+    if (moved) ixs.push(...await moveIxs(signer, p.amountRaw), memoIx(moved.memo, signer));
+    return ixs;
+  }, {
+    onSigning: () => { p.phase = 'signing'; renderApproval(); },
+    onSent: sig => { p.phase = 'confirming'; p.signature = sig; renderApproval(); },
+  });
+
+  if (res.result === 'declined') {
+    // The human declined in Phantom: nothing happened. Back to the choice, countdown resumes.
+    setStatus(p.proposed, 'pending', 'awaiting decision');
+    p.phase = 'waiting';
+    p.msg = 'Signature declined in Phantom. Nothing was recorded or moved. Approve again, or Reject.';
+    renderApproval();
+    return startCountdown();
+  }
+  // Log the decision (and the move) with the transaction's final status.
+  auditLog.push(decision); addLogItem(decision);
+  if (moved && res.result === 'confirmed') { auditLog.push(moved); addLogItem(moved); }
+  renderAuditor(); saveAudit();
+  p.signer = wallet.address;
+  if (res.result === 'confirmed') {
+    if (moved) {
+      await refreshTreasury();
+      if (p.before && treasury.raw.treasury !== null) {
+        treasury.delta = { treasury: treasury.raw.treasury - p.before.treasury, safe: treasury.raw.safe - p.before.safe };
+        renderTreasury();
+      }
+    }
+    return finishDecision(approve ? (moved ? 'approved' : 'approved-no-move') : 'rejected');
+  }
+  finishDecision(res.result === 'failed' ? 'failed' : 'error', res.message);
+}
+
+// Rule R3: nobody decided in time. Log "escalated, no action taken". Nothing moves.
+function escalate() {
+  const p = approval.active;
+  if (!p || (p.phase !== 'waiting' && p.phase !== 'loading')) return;
+  const esc = makeEvent('ESCALATED', { ...p.base, rule: 'R3' }, {
+    detail: 'no_action',
+    text: `No decision within ${policy.windowMin} min. Escalated, no action taken. Nothing moved.`,
+  });
+  const offline = chainBlocker();
+  if (offline) {
+    setStatus(p.proposed, 'none', offline);
+    logEvent(esc, 'none', offline);
+  } else {
+    auditLog.push(esc); addLogItem(esc);
+    queueTx([p.proposed, esc], signer => [memoIx(p.proposed.memo, signer), memoIx(esc.memo, signer)]);
+  }
+  finishDecision('escalated', offline);
+}
+
+function finishDecision(outcome, note) {
+  const p = approval.active;
+  clearInterval(p.timer);
+  p.phase = 'done';
+  p.outcome = outcome;
+  p.msg = note || '';
+  renderApproval();
+}
+function closeApproval() {
+  const p = approval.active;
+  if (p) clearInterval(p.timer);
+  approval.active = null;
+  $('approval').hidden = true;
+}
+function resumeAfterDecision() {
+  closeApproval();
+  setPlaying(true);
+}
+
+function renderApproval() {
+  const p = approval.active;
+  if (!p) return;
+  const done = p.phase === 'done';
+  const busy = ['queued', 'signing', 'confirming'].includes(p.phase);
+  const blocker = moveBlocker(p);
+  const amountTxt = p.amountRaw !== null && p.amountRaw > 0n ? `${fmtTokens(p.amountRaw)}` : `${p.pct}%`;
+  const link = p.signature ? ` <a href="${txUrl(p.signature)}" target="_blank" rel="noopener">View on Explorer ${icon('external', 12)}</a>` : '';
+  const who = p.signer ? shortAddr(p.signer) : '';
+  const tBefore = p.before ? p.before.treasury : treasury.raw.treasury;
+  const sBefore = p.before ? p.before.safe : treasury.raw.safe;
+  const moved = p.outcome === 'approved';
+  const tShow = moved ? treasury.raw.treasury : tBefore;
+  const sShow = moved ? treasury.raw.safe : sBefore;
+  const sub = (d, fallback) => moved && d ? `<span class="delta ${d < 0n ? 'down' : 'up'}">${d > 0n ? '+' : ''}${fmtTokens(d)}</span>` : fallback;
+  const afterT = p.amountRaw !== null && p.amountRaw > 0n && tBefore !== null ? `after: ${fmtTokens(tBefore - p.amountRaw)}` : 'test tokens';
+  const afterS = p.amountRaw !== null && p.amountRaw > 0n && sBefore !== null ? `after: ${fmtTokens(sBefore + p.amountRaw)}` : 'test tokens';
+
+  // Status box: what is happening right now.
+  let cls = 'info', ic = icon('info', 16), txt;
+  if (p.phase === 'loading') { ic = '<i class="pulse-dot"></i>'; txt = "Reading TREASURY's balance on devnet…"; }
+  else if (p.phase === 'waiting') {
+    txt = blocker
+      ? `Approving will record the decision, but no tokens will move: ${blocker}.`
+      : 'Approve opens Phantom. One signature moves the tokens and writes the proposal and decision to devnet.';
+    if (p.msg) { cls = 'bad'; ic = icon('x', 16); txt = p.msg; }
+  }
+  else if (p.phase === 'queued') { ic = '<i class="pulse-dot"></i>'; txt = 'Waiting for the earlier alert signature in Phantom first…'; }
+  else if (p.phase === 'signing') { ic = '<i class="pulse-dot"></i>'; txt = 'Sign the transaction in Phantom…'; }
+  else if (p.phase === 'confirming') { ic = '<i class="pulse-dot"></i>'; txt = 'Sent. Confirming on devnet…' + link; }
+  else if (done) {
+    const outcomes = {
+      approved: ['ok', 'check', `Approved by ${who}. ${fmtTokens(p.amountRaw)} test tokens moved from TREASURY to SAFE.${link}`],
+      'approved-no-move': ['ok', 'check', `Approved by ${who} and recorded on devnet. No tokens moved: ${escapeHtml(p.moveNote)}.${link}`],
+      rejected: ['ok', 'check', `Rejected by ${who} and recorded on devnet. Nothing moved.${link}`],
+      local: ['info', 'info', `${p.approved ? 'Approved' : 'Rejected'} in this browser only (${escapeHtml(p.msg)}). Not on-chain. Nothing moved.`],
+      failed: ['bad', 'x', `The transaction failed on devnet (${escapeHtml(p.msg)}). Nothing moved.${link}`],
+      error: ['bad', 'x', `Could not record on devnet (${escapeHtml(p.msg)}). Decision logged as not on-chain. Nothing moved.`],
+      escalated: ['bad', 'alert', `No decision within ${policy.windowMin} min. Escalated, no action taken. Nothing moved.` +
+        (p.msg ? ` Not on-chain (${escapeHtml(p.msg)}).` : ' Recording the escalation on devnet (sign in Phantom).')],
+    };
+    const [c, i, t] = outcomes[p.outcome];
+    cls = c; ic = icon(i, 16); txt = t;
+  }
+
+  $('approvalCard').innerHTML = `
+    <div class="modal-top">
+      ${icon('alert', 18)}<span class="kick">APPROVAL NEEDED · RULE R2</span>
+      <span class="countdown" id="apCountdown">${done ? 'DECIDED' : fmtCountdown(p.remainingMs)}</span>
+    </div>
+    <div class="cd-track"><div id="apBar" style="transform:scaleX(${done ? 0 : p.remainingMs / (policy.windowMin * 60000)})"></div></div>
+    <h2 id="apTitle">Move ${p.pct}% of ${p.coin} holdings to SAFE?</h2>
+    <p class="why">${p.coin} has been red for ${policy.redHold} simulated minutes. ${escapeHtml(p.reason)}. The simulation is paused.</p>
+    <div class="flow">
+      <div class="bal-tile"><div class="who">TREASURY</div><div class="amt">${fmtTokens(tShow)}</div>
+        <div class="unit">${sub(treasury.delta.treasury, afterT)}</div></div>
+      <div class="move">${icon('arrowRight', 22)}${amountTxt}<small>test tokens</small></div>
+      <div class="bal-tile safe"><div class="who">SAFE</div><div class="amt">${fmtTokens(sShow)}</div>
+        <div class="unit">${sub(treasury.delta.safe, afterS)}</div></div>
+    </div>
+    <div class="ap-status ${cls}">${ic}<span class="txt">${txt}</span></div>
+    <div class="ap-actions">
+      ${done
+        ? `<button class="btn btn-primary" data-action="resume">${icon('play', 16)}Resume simulation</button>`
+        : `<button class="btn btn-danger" data-action="reject" ${busy ? 'disabled' : ''}>${icon('x', 16)}Reject</button>
+           <button class="btn btn-primary" data-action="approve" ${busy || p.phase === 'loading' ? 'disabled' : ''}>${icon('check', 16)}Approve &amp; sign</button>`}
+    </div>
+    <p class="ap-foot">If nobody decides within ${policy.windowMin} min, rule R3 logs "escalated, no action taken". Nothing moves without a signature.</p>`;
+}
+
 // ---------- Alert feed ----------
 function updateAlertCount() {
   $('alertCount').textContent = state.alerts.length === 1 ? '1 alert' : `${state.alerts.length} alerts`;
@@ -1550,15 +2257,25 @@ function resetLog() {
       <button class="btn btn-ghost" data-action="play">${icon('play', 16)}Play scenario</button>
     </div>`;
 }
-// Newest alert goes on top, with a short entry animation.
+// Feed styling per event type.
+const EVENT_ICON = { ALERT: 'bell', PROPOSED: 'zap', APPROVED: 'check', REJECTED: 'x', ESCALATED: 'alert', MOVED: 'swap' };
+function eventTone(e) {
+  if (e.event === 'ALERT') return e.rating === 'RED' ? 'red' : 'amber';
+  if (e.event === 'APPROVED' || e.event === 'MOVED') return 'ok';
+  if (e.event === 'PROPOSED') return 'info';
+  return 'amber';
+}
+// Newest event goes on top, with a short entry animation.
 function addLogItem(e) {
   updateAlertCount();
   const empty = $('log').querySelector('.empty');
   if (empty) empty.remove();
   const tone = e.rating === 'RED' ? 'red' : 'amber';
+  const line = e.event === 'ALERT'
+    ? `${e.rating === 'RED' ? 'Red' : 'Amber or worse'} held ${e.held} min · ${e.reason}` : escapeHtml(e.text || '');
   $('log').insertAdjacentHTML('afterbegin', `
-    <div class="alert-item ${tone}">
-      <span class="avatar">${icon('bell', 18)}</span>
+    <div class="alert-item ${eventTone(e)}">
+      <span class="avatar">${icon(EVENT_ICON[e.event] || 'bell', 18)}</span>
       <div>
         <div class="alert-head">
           <b>${e.event}</b><span>${e.coin}</span>
@@ -1566,7 +2283,7 @@ function addLogItem(e) {
           <span class="rule">${e.rule}</span>
           <time>${fmtHM(e.date)}</time>
         </div>
-        <div class="alert-reason">${e.rating === 'RED' ? 'Red' : 'Amber or worse'} held ${e.held} min · ${e.reason}</div>
+        <div class="alert-reason">${line}</div>
         <div class="memo">${e.memo}</div>
         ${statusHTML(e)}
       </div>
@@ -1579,10 +2296,14 @@ function step() {
   if (state.idx >= state.scn.length - 1) return;
   state.idx++;
   const i = state.idx;
+  let proposal = null;
   COINS.forEach((c, k) => {
     const a = assess(state.data[c.symbol], i);
     state.latest[c.symbol] = a;
     for (const ev of updateTracker(state.trackers[c.symbol], a.level)) {
+      if (ev.rule === 'R1') showToast('Rule R1 · risk manager notified',
+        `${c.symbol} has been amber for ${policy.amberHold} simulated minutes. Alert logged. No funds move.`, 'warn', 5000);
+      if (ev.rule === 'R2') proposal = { coin: c.symbol, a };   // Tier 3: propose a move (after this reading)
       const e = {
         id: newId(), event: 'ALERT', coin: c.symbol, rating: ev.rating, rule: ev.rule, held: ev.held,
         devPct: a.devPct, reason: a.reason, date: simDate(state.scn, i),
@@ -1597,6 +2318,7 @@ function step() {
     }
     if (chart) chart.data.datasets[k].data.push({ x: i, y: a.price });
   });
+  if (proposal) openProposal(proposal.coin, proposal.a);   // pauses the simulation
 }
 
 function render() {
@@ -1619,7 +2341,8 @@ function tick() {
   const dt = Math.min(1, (now - state.lastTs) / 1000);       // cap catch-up after a tab switch
   state.lastTs = now;
   state.carry += dt * state.speed / 60;                      // readings due (1 reading = 1 sim minute)
-  while (state.carry >= 1 && state.idx < state.scn.length - 1) { state.carry -= 1; step(); }
+  while (state.playing && state.carry >= 1 && state.idx < state.scn.length - 1) { state.carry -= 1; step(); }
+  if (!state.playing) { state.carry = 0; render(); return; }      // paused by a proposal (rule R2)
   if (state.idx >= state.scn.length - 1) { state.carry = 0; finish(); }
   render();
 }
@@ -1631,6 +2354,7 @@ function setPlayButtons(on) {
 }
 
 function setPlaying(on) {
+  if (on && approval.active) return;                          // a proposal needs a decision first
   if (on && state.idx >= state.scn.length - 1) reset();      // pressing Play at the end restarts
   state.playing = on;
   state.lastTs = performance.now();
@@ -1653,17 +2377,22 @@ function finish() {
   showToast(`Scenario ${state.scn.id} finished`, msg);
 }
 
-// kind: 'ok' (green tick) or 'warn' (amber info icon)
-function showToast(title, text, kind = 'ok') {
+// kind: 'ok' (green tick) or 'warn' (amber info icon). autoHideMs: hide by itself after that long.
+let toastTimer = null;
+function showToast(title, text, kind = 'ok', autoHideMs = 0) {
   $('toastTitle').textContent = title;
   $('toastText').textContent = text;
   document.querySelector('#toast .t-ic').innerHTML = icon(kind === 'warn' ? 'info' : 'check', 18);
   $('toast').classList.toggle('warn', kind === 'warn');
   $('toast').classList.add('show');
+  clearTimeout(toastTimer);
+  if (autoHideMs) toastTimer = setTimeout(hideToast, autoHideMs);
 }
 function hideToast() { $('toast').classList.remove('show'); }
 
 function reset() {
+  if (approval.active && approval.active.phase !== 'done') setStatus(approval.active.proposed, 'none', 'cancelled: simulation reset');
+  closeApproval();
   state.playing = false;
   clearInterval(timer);
   setPlayButtons(false);
@@ -1755,7 +2484,7 @@ function startScrollSpy() {
   const obs = new IntersectionObserver(entries => {
     entries.forEach(en => { if (en.isIntersecting) setNavActive(en.target.id); });
   }, { rootMargin: '-45% 0px -50% 0px' });
-  ['top', 'board', 'method'].forEach(id => obs.observe($(id)));
+  ['top', 'board', 'respond', 'method'].forEach(id => obs.observe($(id)));
   // "Risk board" / "Auditor view" nav links also switch the tab.
   links.forEach(l => { if (l.dataset.tabLink) l.addEventListener('click', () => showTab(l.dataset.tabLink)); });
 }
@@ -1776,14 +2505,27 @@ $('wallet').addEventListener('click', e => {
   if (e.target.closest('#walletOn')) connectWallet();
   if (e.target.closest('#walletOff')) disconnectWallet();
 });
-$('chainToggle').addEventListener('change', renderChainHint);
+$('chainToggle').addEventListener('change', () => { renderChainHint(); renderApproval(); });
+// Tier 3: policy inputs, treasury setup, approval card buttons
+['pAmber', 'pRed', 'pMove', 'pWindow'].forEach(id => $(id).addEventListener('change', readPolicyInputs));
+$('policyReset').addEventListener('click', () => { Object.assign(policy, POLICY_DEFAULTS); applyPolicy(); });
+$('setupForm').addEventListener('submit', saveSetup);
+$('balRefresh').addEventListener('click', refreshTreasury);
+$('approvalCard').addEventListener('click', e => {
+  const b = e.target.closest('[data-action]');
+  if (!b || b.disabled) return;
+  if (b.dataset.action === 'approve') decide('approve');
+  if (b.dataset.action === 'reject') decide('reject');
+  if (b.dataset.action === 'resume') resumeAfterDecision();
+});
 $('auditClear').addEventListener('click', clearAudit);
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
 document.querySelectorAll('#speed button').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
 // After a mouse click, drop focus from the button so Space goes to the play/pause shortcut.
 document.addEventListener('pointerup', e => { const b = e.target.closest('button'); if (b) b.blur(); });
 document.addEventListener('keydown', e => {
-  if (e.target.closest('button, input, select, textarea')) return;   // let the focused control handle keys
+  if (approval.active) return;                                        // decide on the proposal first
+  if (e.target.closest('button, input, select, textarea, summary')) return;   // let the focused control handle keys
   if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); }
   else if (e.key === 'r' || e.key === 'R') reset();
   else if (['1', '2', '3', '4'].includes(e.key)) loadScenario('ABCD'[Number(e.key) - 1]);
@@ -1795,6 +2537,9 @@ initChart();
 setSpeed(60);
 loadAudit();             // Tier 2: restore the auditor list saved in this browser
 renderAuditor();
+loadSetup();             // Tier 3: token + wallet addresses
+applyPolicy();           // Tier 3: rules R1–R3 (defaults)
+refreshTreasury();       // Tier 3: read TREASURY / SAFE balances from devnet
 showTab('board');
 loadScenario('C');       // open on the main demo scenario
 initWallet();            // Tier 2: reconnect Phantom silently if already approved
