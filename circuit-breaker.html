@@ -4,12 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stablecoin Circuit Breaker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d12'/%3E%3Ccircle cx='16' cy='7' r='4' fill='%232be38a'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23ffa51f'/%3E%3Ccircle cx='16' cy='25' r='4' fill='%23ff4f64'/%3E%3C/svg%3E">
 <!-- Fonts from design.md: Poppins (UI) + JetBrains Mono (numbers, memos). Falls back to system fonts offline. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <!-- Chart.js from a CDN. If it fails to load (no internet), the app still runs without the chart. -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- Solana web3.js (Tier 2). If it fails to load, the demo still runs and alerts are marked "not on-chain". -->
+<script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js"></script>
 <style>
   /* =========================================================
      DESIGN TOKENS — from design.md ("Estilo de Ecossistema Digital")
@@ -369,6 +372,79 @@
   footer .container { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
   kbd { font-family: var(--mono); font-size: 0.75rem; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; color: var(--muted); background: var(--surface); }
 
+  /* =========================================================
+     TIER 2: wallet, on-chain status, tabs, auditor view
+     ========================================================= */
+  [hidden] { display: none !important; }
+  .btn-sm { padding: 8px 14px; font-size: 0.85rem; min-width: 0; }
+  .wallet { display: flex; align-items: center; }
+  .wallet-chip {
+    display: flex; align-items: center; gap: 0.6rem; padding: 4px 4px 4px 10px;
+    border: 1px solid rgba(177, 76, 240, 0.5); border-radius: 0.5rem; background: rgba(177, 76, 240, 0.08);
+  }
+  .wallet-chip > .ic { color: var(--purple); }
+  .wallet-chip .addr { font-family: var(--mono); font-size: 0.82rem; line-height: 1.2; white-space: nowrap; }
+  .logo b, .wallet .btn { white-space: nowrap; }
+  .wallet-chip .bal { display: block; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); line-height: 1.2; }
+  .wallet-chip .bal.low { color: var(--amber); }
+
+  .chain-row {
+    display: flex; align-items: center; gap: 0.85rem; margin-top: 1.1rem; padding: 0.75rem 0.9rem;
+    border: 1px solid var(--line-2); border-radius: 0.5rem; background: var(--raised);
+  }
+  .chain-row b { display: block; font-size: 0.9rem; font-weight: 600; line-height: 1.3; }
+  .chain-row small { display: block; font-size: 0.78rem; color: var(--muted); line-height: 1.4; }
+  .chain-row small a { color: var(--cyan); }
+  .switch { position: relative; width: 44px; height: 24px; flex: none; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+  .switch .slider { position: absolute; inset: 0; border-radius: 999px; background: var(--deep); transition: background-color 0.2s; }
+  .switch .slider::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; transition: transform 0.2s var(--ease);
+  }
+  .switch input:checked + .slider { background: var(--purple); box-shadow: 0 0 12px -2px rgba(177, 76, 240, 0.8); }
+  .switch input:checked + .slider::after { transform: translateX(20px); }
+  .switch input:focus-visible + .slider { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  /* On-chain status: pending / confirmed / failed / not on-chain */
+  .st { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 0.74rem; margin-top: 0.5rem; }
+  .st .lbl { font-weight: 600; }
+  .st .note { color: var(--muted); }
+  .st.none { color: var(--dim); }
+  .st.pending { color: var(--blue); }
+  .st.confirmed { color: var(--green); }
+  .st.failed { color: var(--red); }
+  .st a { display: inline-flex; align-items: center; gap: 3px; color: var(--cyan); font-weight: 600; text-decoration: none; }
+  .st a:hover { text-decoration: underline; }
+  .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 8px var(--blue); animation: blink 1s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: 0.3; } }
+
+  .tabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 1.25rem; background: var(--surface); border: 1px solid var(--line-2); border-radius: 0.5rem; }
+  .tab {
+    display: inline-flex; align-items: center; gap: 0.5rem; border: 0; background: transparent; color: var(--muted);
+    padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; transition: background-color 0.2s, color 0.2s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--raised); color: var(--text); box-shadow: inset 0 -2px 0 var(--blue); }
+  .tab .count { font-family: var(--mono); font-size: 0.72rem; padding: 0 7px; border-radius: 999px; background: var(--deep); color: var(--text); }
+
+  .auditor { padding: 1.25rem 1.4rem; animation: enter 0.3s var(--ease) both; }
+  .auditor .card-head { flex-wrap: wrap; }
+  .auditor .card-head .btn { margin-left: auto; }
+  .aud-intro { margin: -0.25rem 0 1rem; color: var(--muted); font-size: 0.9rem; max-width: 90ch; }
+  .aud-scroll { overflow-x: auto; }
+  .aud-table { min-width: 1040px; font-size: 0.86rem; }
+  .aud-table th { padding: 0.75rem; }
+  .aud-table td { padding: 0.8rem 0.75rem; }
+  .aud-table .when { font-family: var(--mono); white-space: nowrap; }
+  .aud-table .idx { font-family: var(--mono); color: var(--dim); }
+  .aud-table .what { min-width: 280px; }
+  .aud-table .what .memo { margin-top: 0.4rem; }
+  .aud-table .signer a { font-family: var(--mono); color: var(--purple); text-decoration: none; white-space: nowrap; }
+  .aud-table .signer a:hover { text-decoration: underline; }
+  .aud-table .st { margin-top: 0; }
+  .aud-empty td { text-align: center; color: var(--muted); padding: 2.5rem 1rem; }
+
   /* ---------- Toast (z-index 500) ---------- */
   .toast {
     position: fixed; right: 1.5rem; bottom: 1.5rem; z-index: 500; max-width: 420px;
@@ -380,6 +456,8 @@
   .toast.show { opacity: 1; transform: none; pointer-events: auto; }
   .toast::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 8px 0 0 8px; background: linear-gradient(var(--blue), var(--purple)); }
   .toast .t-ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: rgba(43, 227, 138, 0.14); color: var(--green); }
+  .toast.warn .t-ic { background: rgba(255, 165, 31, 0.14); color: var(--amber); }
+  .toast p a { color: var(--cyan); }
   .toast b { display: block; font-weight: 600; }
   .toast p { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.88rem; }
 
@@ -402,7 +480,9 @@
     html { font-size: 15px; }
     .container { padding: 0 1rem; }
     .cards { grid-template-columns: 1fr; }
-    .live-mini .coin-dot, .badge.devnet { display: none; }
+    .live-mini .coin-dot, .badge.devnet, .wallet-chip .bal { display: none; }
+    .tabs { display: flex; }
+    .tab { flex: 1; justify-content: center; padding: 8px 10px; }
     .nav .container { gap: 0.75rem; }
     .logo small { display: none; }
     .tiles { grid-template-columns: 1fr; }
@@ -412,7 +492,7 @@
     .toast { left: 1rem; right: 1rem; max-width: none; }
   }
   @media (max-width: 480px) {
-    .live-mini { display: none; }
+    .live-mini, .logo > span:last-child { display: none; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
@@ -431,7 +511,8 @@
     </a>
     <div class="nav-links">
       <a href="#top" data-spy="top" class="active">Player</a>
-      <a href="#board" data-spy="board">Risk board</a>
+      <a href="#board" data-spy="board" data-tab-link="board">Risk board</a>
+      <a href="#board" data-spy="auditor" data-tab-link="auditor">Auditor view</a>
       <a href="#method" data-spy="method">Method</a>
     </div>
     <div class="nav-right">
@@ -442,8 +523,10 @@
         <span class="mono" id="navClock">--:--</span>
         <button class="icon-btn" id="navPlay" aria-label="Play"></button>
       </div>
+      <!-- Phantom wallet (Tier 2): filled in by JavaScript -->
+      <div class="wallet" id="wallet"></div>
       <span class="badge sim">SIMULATION</span>
-      <span class="badge devnet" title="Solana devnet only. Blockchain steps arrive in Tier 2.">DEVNET</span>
+      <span class="badge devnet" title="Solana devnet only. Never mainnet.">DEVNET</span>
     </div>
   </div>
 </nav>
@@ -462,15 +545,15 @@
       <span class="eyebrow"><i></i>BUILD IRL VOL. 1 · SOLANA · DUBLIN</span>
       <h1>Detect stress.<br>Trigger the plan.<br><span class="grad">Prove it on Solana.</span></h1>
       <p class="lead">A treasury early-warning demo. It rates stablecoin stress green, amber or red,
-        waits for a colour to hold before it raises an alert, and prepares every step to be recorded on Solana devnet.</p>
+        waits for a colour to hold before it raises an alert, and writes every alert to Solana devnet as a signed, public record.</p>
       <ol class="layers" aria-label="Product layers">
         <li class="layer live"><span class="layer-ic" data-icon="eye"></span><span><b>Detect</b><small>Live · Tier 1</small></span></li>
         <li class="sep" data-icon="chevron"></li>
         <li class="layer locked"><span class="layer-ic" data-icon="lock"></span><span><b>Respond</b><small>Unlocks in Tier 3</small></span></li>
         <li class="sep" data-icon="chevron"></li>
-        <li class="layer locked"><span class="layer-ic" data-icon="lock"></span><span><b>Prove</b><small>Unlocks in Tier 2</small></span></li>
+        <li class="layer live"><span class="layer-ic" data-icon="shield"></span><span><b>Prove</b><small>Live · Tier 2</small></span></li>
       </ol>
-      <div class="xp"><div class="xp-track"><div style="width:33.3%"></div></div>1 of 3 layers live</div>
+      <div class="xp"><div class="xp-track"><div style="width:66.6%"></div></div>2 of 3 layers live</div>
     </div>
 
     <!-- SCENARIO PLAYER -->
@@ -504,6 +587,14 @@
         <span class="clock" id="clock">—</span>
       </div>
       <div class="track"><div id="progress"></div></div>
+      <!-- On-chain recording switch (Tier 2) -->
+      <div class="chain-row">
+        <label class="switch" title="Record alerts on Solana devnet">
+          <input type="checkbox" id="chainToggle" checked aria-label="Record alerts on Solana devnet">
+          <span class="slider"></span>
+        </label>
+        <div><b>Record alerts on Solana devnet</b><small id="chainHint"></small></div>
+      </div>
     </section>
   </div>
 </header>
@@ -513,12 +604,16 @@
   <section class="block" id="board">
     <div class="section-head">
       <div>
-        <span class="kicker">DETECT</span>
+        <span class="kicker">DETECT · PROVE</span>
         <h2>Live risk board</h2>
       </div>
-      <p>Lights change instantly. An alert is logged only when a colour holds: amber for 3 simulated minutes, red for 5.</p>
+      <p>Lights change instantly. An alert is logged only when a colour holds: amber for 3 simulated minutes, red for 5. Each alert is then signed and written to Solana devnet.</p>
     </div>
-    <div class="board">
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button class="tab active" role="tab" data-tab="board" aria-selected="true"><span data-icon="activity" data-size="16"></span>Risk board</button>
+      <button class="tab" role="tab" data-tab="auditor" aria-selected="false"><span data-icon="shield" data-size="16"></span>Auditor view <span class="count" id="auditCount">0</span></button>
+    </div>
+    <div class="board" id="panel-board">
       <div class="board-main">
         <div class="cards" id="cards" aria-label="Rating cards"></div>
 
@@ -553,6 +648,27 @@
         </div>
         <div class="feed-list" id="log"></div>
       </aside>
+    </div>
+
+    <!-- 7. AUDITOR VIEW (Tier 2): every event in this browser session, oldest first -->
+    <div class="card auditor" id="panel-auditor" hidden>
+      <div class="card-head">
+        <span data-icon="shield"></span>
+        <h3>Auditor view</h3>
+        <span class="chip">oldest first · kept in this browser</span>
+        <button class="btn btn-ghost btn-sm" id="auditClear"><span data-icon="trash" data-size="15"></span>Clear list</button>
+      </div>
+      <p class="aud-intro">Every alert is written to Solana devnet as a memo, signed by the connected wallet.
+        The Explorer link opens the public record, which shows the memo text, the signer and the time.
+        Clearing this list only clears this browser; the on-chain records stay.</p>
+      <div class="aud-scroll">
+        <table class="aud-table">
+          <thead>
+            <tr><th>#</th><th>Simulated time</th><th>Scn</th><th>Event</th><th>Coin</th><th>Rating</th><th>Rule</th><th>What happened</th><th>Signer</th><th>Status</th></tr>
+          </thead>
+          <tbody id="auditBody"></tbody>
+        </table>
+      </div>
     </div>
   </section>
 
@@ -889,6 +1005,11 @@ const ICON_PATHS = {
   timer: '<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
   repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
   unlink: '<path d="M9 17H7A5 5 0 0 1 7 7"/><path d="M15 7h2a5 5 0 0 1 4 8"/><line x1="8" x2="12" y1="12" y2="12"/><line x1="2" x2="22" y1="2" y2="22"/>',
+  wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
+  external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+  shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
 };
 function icon(name, size = 18) {
   return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
@@ -1131,6 +1252,290 @@ function fitYAxis() {
   chart.options.scales.y.max = Math.max(1.005, hi + span * 0.05);
 }
 
+// =====================================================================
+// SOLANA LAYER (Tier 2): Phantom connect, memo transactions, Explorer links
+// Devnet is hard-coded. Phantom only SIGNS; this page then sends the signed
+// transaction straight to the devnet RPC below, so nothing can reach mainnet.
+// =====================================================================
+const SOLANA = {
+  CLUSTER: 'devnet',
+  RPC: 'https://api.devnet.solana.com',
+  MEMO_PROGRAM_ID: 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr',
+  SIGN_TIMEOUT_MS: 90000,   // stop waiting for a Phantom signature after 90 seconds
+  LOW_SOL: 0.001,           // warn below this balance (one memo costs about 0.000005 SOL)
+};
+const txUrl = sig => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
+const addrUrl = a => `https://explorer.solana.com/address/${a}?cluster=devnet`;
+const shortAddr = a => (a ? a.slice(0, 4) + '…' + a.slice(-4) : '—');
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+const wallet = { provider: null, address: null, balance: null, connecting: false };
+let connection = null;
+const solanaReady = () => !!window.solanaWeb3;
+const recordingOn = () => $('chainToggle').checked;
+function getConnection() {
+  if (!connection) connection = new solanaWeb3.Connection(SOLANA.RPC, 'confirmed');
+  return connection;
+}
+// Phantom injects itself as window.phantom.solana (newer) or window.solana (older).
+function getProvider() {
+  if (window.phantom && window.phantom.solana && window.phantom.solana.isPhantom) return window.phantom.solana;
+  if (window.solana && window.solana.isPhantom) return window.solana;
+  return null;
+}
+
+// ---------- Wallet connect / disconnect / balance ----------
+async function connectWallet() {
+  if (!solanaReady()) {
+    return showToast('Solana library not loaded', 'Check the internet connection and reload. The simulation still works; alerts are marked not on-chain.', 'warn');
+  }
+  const provider = getProvider();
+  if (!provider) {
+    return showToast('Phantom not found', location.protocol === 'file:'
+      ? 'Wallets cannot connect to a double-clicked file. In a terminal, run "node serve.js" in the project folder, then open http://localhost:5173.'
+      : 'Install the Phantom browser extension, switch it to Devnet, then reload this page.', 'warn');
+  }
+  wallet.connecting = true;
+  renderWallet();
+  try {
+    const res = await provider.connect();
+    setConnected(provider, (res && res.publicKey) || provider.publicKey);
+  } catch (err) {
+    showToast('Wallet not connected', (err && err.message) || 'The connection request was declined.', 'warn');
+  } finally {
+    wallet.connecting = false;
+    renderWallet();
+  }
+}
+function setConnected(provider, publicKey) {
+  wallet.provider = provider;
+  wallet.address = publicKey ? publicKey.toString() : null;
+  wallet.balance = null;
+  renderWallet();
+  refreshBalance();
+}
+async function disconnectWallet() {
+  try { if (wallet.provider) await wallet.provider.disconnect(); } catch (err) { /* ignore */ }
+  wallet.address = null;
+  wallet.balance = null;
+  renderWallet();
+}
+async function refreshBalance() {
+  if (!wallet.address || !solanaReady()) return;
+  try {
+    const lamports = await getConnection().getBalance(new solanaWeb3.PublicKey(wallet.address));
+    wallet.balance = lamports / solanaWeb3.LAMPORTS_PER_SOL;
+  } catch (err) {
+    wallet.balance = null;
+  }
+  renderWallet();
+}
+function renderWallet() {
+  const el = $('wallet');
+  if (wallet.address) {
+    const low = wallet.balance !== null && wallet.balance < SOLANA.LOW_SOL;
+    el.innerHTML = `
+      <div class="wallet-chip" title="Connected on devnet: ${wallet.address}">
+        ${icon('wallet', 16)}
+        <span><span class="addr">${shortAddr(wallet.address)}</span>
+          <span class="bal ${low ? 'low' : ''}">${wallet.balance === null ? '… SOL' : wallet.balance.toFixed(3) + ' SOL'}</span></span>
+        <button class="icon-btn" id="walletOff" aria-label="Disconnect wallet" title="Disconnect">${icon('logout', 15)}</button>
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <button class="btn btn-primary btn-sm" id="walletOn" ${wallet.connecting ? 'disabled' : ''}>
+        ${icon('wallet', 16)}${wallet.connecting ? 'Connecting…' : 'Connect Phantom'}
+      </button>`;
+  }
+  renderChainHint();
+}
+// The small line of help text under the "Record alerts on Solana devnet" switch.
+function renderChainHint() {
+  const h = $('chainHint');
+  if (!solanaReady()) h.textContent = 'Solana library could not load (offline?). Alerts are marked not on-chain.';
+  else if (!recordingOn()) h.textContent = 'Off. Alerts stay in the feed, marked not on-chain.';
+  else if (!wallet.address) h.textContent = 'Connect Phantom to sign each alert as a devnet memo. Until then, alerts are marked not on-chain.';
+  else if (wallet.balance !== null && wallet.balance < SOLANA.LOW_SOL) {
+    h.innerHTML = 'This wallet needs devnet SOL for fees. Get some free at <a href="https://faucet.solana.com" target="_blank" rel="noopener">faucet.solana.com</a>.';
+  } else h.textContent = `On. Phantom asks you to sign each alert. Signer ${shortAddr(wallet.address)}.`;
+}
+function initWallet(retry = true) {
+  renderWallet();
+  const provider = getProvider();
+  if (!provider) { if (retry) setTimeout(() => initWallet(false), 800); return; }   // extension may inject late
+  if (!solanaReady()) return;
+  if (provider.on) {
+    provider.on('accountChanged', pk => { if (pk) setConnected(provider, pk); else disconnectWallet(); });
+    provider.on('disconnect', () => { wallet.address = null; wallet.balance = null; renderWallet(); });
+  }
+  // Reconnect silently if this site was approved before (no popup).
+  provider.connect({ onlyIfTrusted: true })
+    .then(res => setConnected(provider, (res && res.publicKey) || provider.publicKey))
+    .catch(() => {});
+}
+
+// ---------- Memo transactions ----------
+// Alerts are sent one at a time, in order, so Phantom never gets two popups at once.
+let chainQueue = Promise.resolve();
+function recordOnChain(e) {
+  if (!solanaReady()) return setStatus(e, 'none', 'Solana library offline');
+  if (!recordingOn()) return setStatus(e, 'none', 'recording switched off');
+  if (!wallet.address) return setStatus(e, 'none', 'wallet not connected');
+  setStatus(e, 'pending', 'waiting for Phantom signature');
+  chainQueue = chainQueue.then(() => sendMemo(e)).catch(() => {});
+}
+function withTimeout(promise, ms, message) {
+  let t;
+  const timeout = new Promise((_, reject) => { t = setTimeout(() => reject(new Error(message)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+}
+// Build ONE transaction with a Memo instruction, have Phantom sign it, send it to devnet, confirm it.
+async function sendMemo(e) {
+  if (!wallet.address) return setStatus(e, 'none', 'wallet disconnected');
+  const { PublicKey, Transaction, TransactionInstruction } = solanaWeb3;
+  const conn = getConnection();
+  const signer = new PublicKey(wallet.address);
+  let signed, latest;
+  try {
+    latest = await conn.getLatestBlockhash('confirmed');
+    const tx = new Transaction({ feePayer: signer, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight });
+    tx.add(new TransactionInstruction({
+      programId: new PublicKey(SOLANA.MEMO_PROGRAM_ID),
+      keys: [{ pubkey: signer, isSigner: true, isWritable: false }],
+      data: new TextEncoder().encode(e.memo),
+    }));
+    signed = await withTimeout(wallet.provider.signTransaction(tx), SOLANA.SIGN_TIMEOUT_MS, 'no signature within 90 s');
+  } catch (err) {
+    const declined = err && (err.code === 4001 || /reject|declin|cancel/i.test(err.message || ''));
+    return setStatus(e, 'none', declined ? 'signature declined' : shortError(err));
+  }
+  e.signer = wallet.address;
+  try {
+    e.signature = await conn.sendRawTransaction(signed.serialize());
+    setStatus(e, 'pending', 'confirming on devnet');
+    const res = await conn.confirmTransaction(
+      { signature: e.signature, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight }, 'confirmed');
+    if (res.value.err) throw new Error('transaction error ' + JSON.stringify(res.value.err));
+    setStatus(e, 'confirmed', '');
+  } catch (err) {
+    // Nothing landed on-chain -> "not on-chain". Landed but did not confirm -> "failed".
+    if (!e.signature) e.signer = null;
+    setStatus(e, e.signature ? 'failed' : 'none', shortError(err));
+  }
+  refreshBalance();
+}
+function shortError(err) {
+  const msg = (err && err.message) || String(err);
+  if (/prior credit|insufficient/i.test(msg)) return 'wallet has no devnet SOL (faucet.solana.com)';
+  if (/blockhash not found|expired/i.test(msg)) return 'expired before confirming';
+  if (/failed to fetch|networkerror/i.test(msg)) return 'devnet RPC unreachable';
+  return msg.length > 90 ? msg.slice(0, 90) + '…' : msg;
+}
+
+// ---------- Event status: pending / confirmed / failed / not on-chain ----------
+function statusHTML(e) {
+  const kinds = {
+    none: [icon('unlink', 13), 'not on-chain'],
+    pending: ['<i class="pulse-dot"></i>', 'pending'],
+    confirmed: [icon('check', 13), 'confirmed on devnet'],
+    failed: [icon('x', 13), 'failed'],
+  };
+  const [ic, label] = kinds[e.status] || kinds.none;
+  const note = e.note ? `<span class="note">· ${escapeHtml(e.note)}</span>` : '';
+  const link = e.signature
+    ? `<a href="${txUrl(e.signature)}" target="_blank" rel="noopener">Explorer ${icon('external', 12)}</a>` : '';
+  return `<span class="st ${e.status}" data-st="${e.id}">${ic}<span class="lbl">${label}</span>${note}${link}</span>`;
+}
+function setStatus(e, status, note) {
+  e.status = status;
+  e.note = note || '';
+  document.querySelectorAll(`#log [data-st="${e.id}"]`).forEach(el => { el.outerHTML = statusHTML(e); });
+  renderAuditor();
+  saveAudit();
+}
+
+// ---------- Auditor view: every event, kept in this browser ----------
+const AUDIT_KEY = 'cb.audit.v1';
+let auditLog = [];
+let idCounter = 0;
+const newId = () => Date.now().toString(36) + '-' + (idCounter++);
+function loadAudit() {
+  try { auditLog = JSON.parse(localStorage.getItem(AUDIT_KEY) || '[]'); } catch (err) { auditLog = []; }
+  auditLog.forEach(e => {        // a reload interrupts anything still waiting for a signature
+    if (e.status === 'pending' && !e.signature) { e.status = 'none'; e.note = 'interrupted by page reload'; }
+  });
+}
+function saveAudit() {
+  try { localStorage.setItem(AUDIT_KEY, JSON.stringify(auditLog.map(({ date, ...rest }) => rest))); } catch (err) { /* storage blocked: list still works */ }
+}
+// After a reload, ask devnet what happened to transactions that were still confirming.
+async function recheckPending() {
+  const list = auditLog.filter(e => e.status === 'pending' && e.signature);
+  if (!list.length || !solanaReady()) return;
+  try {
+    const res = await getConnection().getSignatureStatuses(list.map(e => e.signature), { searchTransactionHistory: true });
+    res.value.forEach((s, i) => {
+      if (s && !s.err) setStatus(list[i], 'confirmed', '');
+      else setStatus(list[i], 'failed', s ? 'transaction error' : 'not found on devnet');
+    });
+  } catch (err) { /* try again next reload */ }
+}
+function plainSentence(e) {
+  return `${e.coin} ${e.rating === 'RED' ? 'held red' : 'held amber or worse'} for ${e.held} simulated minutes. ${e.reason}.`;
+}
+function renderAuditor() {
+  $('auditCount').textContent = auditLog.length;
+  if (!auditLog.length) {
+    $('auditBody').innerHTML = '<tr class="aud-empty"><td colspan="10">No events yet. Play a scenario: every alert appears here with its on-chain record.</td></tr>';
+    return;
+  }
+  $('auditBody').innerHTML = auditLog.map((e, i) => {
+    const tone = e.rating === 'RED' ? 'red' : 'amber';
+    const signer = e.signer
+      ? `<a href="${addrUrl(e.signer)}" target="_blank" rel="noopener" title="${e.signer}">${shortAddr(e.signer)}</a>` : '—';
+    return `<tr>
+      <td class="idx">${i + 1}</td>
+      <td class="when">${e.simIso.replace('T', ' ')}</td>
+      <td>${e.scn}</td>
+      <td><b>${e.event}</b></td>
+      <td>${e.coin}</td>
+      <td><span class="mini-pill ${tone}">${e.rating}</span></td>
+      <td><span class="rule">${e.rule}</span></td>
+      <td class="what">${escapeHtml(plainSentence(e))}<div class="memo">${escapeHtml(e.memo)}</div></td>
+      <td class="signer">${signer}</td>
+      <td>${statusHTML(e)}</td>
+    </tr>`;
+  }).join('');
+}
+function clearAudit() {
+  if (!auditLog.length) return;
+  if (!window.confirm('Clear the auditor list in this browser? The records already on Solana devnet are not affected.')) return;
+  auditLog = [];
+  saveAudit();
+  renderAuditor();
+}
+
+// ---------- Tabs: Risk board / Auditor view ----------
+let currentSection = 'top';
+function showTab(name) {
+  state.tab = name;
+  document.querySelectorAll('.tab').forEach(t => {
+    const on = t.dataset.tab === name;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', String(on));
+  });
+  $('panel-board').hidden = name !== 'board';
+  $('panel-auditor').hidden = name !== 'auditor';
+  setNavActive(currentSection);
+}
+function setNavActive(section) {
+  currentSection = section;
+  const key = section === 'board' ? (state.tab || 'board') : section;
+  document.querySelectorAll('.nav-links a').forEach(l => l.classList.toggle('active', l.dataset.spy === key));
+}
+
 // ---------- Alert feed ----------
 function updateAlertCount() {
   $('alertCount').textContent = state.alerts.length === 1 ? '1 alert' : `${state.alerts.length} alerts`;
@@ -1163,7 +1568,7 @@ function addLogItem(e) {
         </div>
         <div class="alert-reason">${e.rating === 'RED' ? 'Red' : 'Amber or worse'} held ${e.held} min · ${e.reason}</div>
         <div class="memo">${e.memo}</div>
-        <span class="chain" title="Blockchain recording arrives in Tier 2">${icon('unlink', 13)}not on-chain</span>
+        ${statusHTML(e)}
       </div>
     </div>`);
 }
@@ -1179,13 +1584,16 @@ function step() {
     state.latest[c.symbol] = a;
     for (const ev of updateTracker(state.trackers[c.symbol], a.level)) {
       const e = {
-        event: 'ALERT', coin: c.symbol, rating: ev.rating, rule: ev.rule, held: ev.held,
+        id: newId(), event: 'ALERT', coin: c.symbol, rating: ev.rating, rule: ev.rule, held: ev.held,
         devPct: a.devPct, reason: a.reason, date: simDate(state.scn, i),
         simIso: simIso(state.scn, i), scn: state.scn.id,
+        status: 'none', note: '', signer: null, signature: null, loggedAt: new Date().toISOString(),
       };
       e.memo = buildMemo(e);
-      state.alerts.push(e);
+      state.alerts.push(e);     // this run's feed
+      auditLog.push(e);         // the auditor's full list (survives Reset)
       addLogItem(e);
+      recordOnChain(e);         // Tier 2: sign + send the memo (or mark "not on-chain")
     }
     if (chart) chart.data.datasets[k].data.push({ x: i, y: a.price });
   });
@@ -1245,9 +1653,12 @@ function finish() {
   showToast(`Scenario ${state.scn.id} finished`, msg);
 }
 
-function showToast(title, text) {
+// kind: 'ok' (green tick) or 'warn' (amber info icon)
+function showToast(title, text, kind = 'ok') {
   $('toastTitle').textContent = title;
   $('toastText').textContent = text;
+  document.querySelector('#toast .t-ic').innerHTML = icon(kind === 'warn' ? 'info' : 'check', 18);
+  $('toast').classList.toggle('warn', kind === 'warn');
   $('toast').classList.add('show');
 }
 function hideToast() { $('toast').classList.remove('show'); }
@@ -1342,11 +1753,11 @@ function startParticles() {
 function startScrollSpy() {
   const links = document.querySelectorAll('.nav-links a');
   const obs = new IntersectionObserver(entries => {
-    entries.forEach(en => {
-      if (en.isIntersecting) links.forEach(l => l.classList.toggle('active', l.dataset.spy === en.target.id));
-    });
+    entries.forEach(en => { if (en.isIntersecting) setNavActive(en.target.id); });
   }, { rootMargin: '-45% 0px -50% 0px' });
   ['top', 'board', 'method'].forEach(id => obs.observe($(id)));
+  // "Risk board" / "Auditor view" nav links also switch the tab.
+  links.forEach(l => { if (l.dataset.tabLink) l.addEventListener('click', () => showTab(l.dataset.tabLink)); });
 }
 
 // ---------- Wire up the page ----------
@@ -1361,6 +1772,13 @@ $('navPlay').addEventListener('click', () => setPlaying(!state.playing));
 $('resetBtn').addEventListener('click', reset);
 $('toastClose').addEventListener('click', hideToast);
 $('log').addEventListener('click', e => { if (e.target.closest('[data-action="play"]')) setPlaying(true); });
+$('wallet').addEventListener('click', e => {
+  if (e.target.closest('#walletOn')) connectWallet();
+  if (e.target.closest('#walletOff')) disconnectWallet();
+});
+$('chainToggle').addEventListener('change', renderChainHint);
+$('auditClear').addEventListener('click', clearAudit);
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
 document.querySelectorAll('#speed button').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
 // After a mouse click, drop focus from the button so Space goes to the play/pause shortcut.
 document.addEventListener('pointerup', e => { const b = e.target.closest('button'); if (b) b.blur(); });
@@ -1375,7 +1793,12 @@ paintIcons();
 buildCards();
 initChart();
 setSpeed(60);
+loadAudit();             // Tier 2: restore the auditor list saved in this browser
+renderAuditor();
+showTab('board');
 loadScenario('C');       // open on the main demo scenario
+initWallet();            // Tier 2: reconnect Phantom silently if already approved
+recheckPending();
 startParticles();
 startScrollSpy();
 </script>
