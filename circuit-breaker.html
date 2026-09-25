@@ -4,369 +4,616 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stablecoin Circuit Breaker</title>
+<!-- Fonts from design.md: Poppins (UI) + JetBrains Mono (numbers, memos). Falls back to system fonts offline. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <!-- Chart.js from a CDN. If it fails to load (no internet), the app still runs without the chart. -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   /* =========================================================
-     DESIGN TOKENS — taken from the Project Brief PDF
-     (navy header, teal accents, traffic-light colours)
+     DESIGN TOKENS — from design.md ("Estilo de Ecossistema Digital")
+     Dark-only, off-black surfaces (never pure black), Azul Digital
+     primary, Roxo Elétrico / Ciano accents, neon status lights.
+     Traffic-light colours keep their meaning: green / amber / red.
      ========================================================= */
   :root {
-    --navy: #14213d;
-    --navy-2: #1d2d50;
-    --teal: #137a80;
-    --teal-soft: #e3f1f1;
-    --green: #2e8b57;
-    --amber: #d98c0a;
-    --red: #c0392b;
-    --green-bg: #e8f4ed;
-    --amber-bg: #fdf3e1;
-    --red-bg: #fbe9e7;
-    --grey-bg: #eef3f6;
-    --line: #cbd5dd;
-    --text: #1b2433;
-    --muted: #5b6878;
-    --page: #f5f7f9;
-    --card: #ffffff;
-    --usdc: #2f6fdb;
-    --usdt: #7b8794;
-    --mono: ui-monospace, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+    --bg: #0b0d12;          /* off-black page */
+    --surface: #12151c;     /* cards */
+    --raised: #181c25;      /* raised surfaces, inputs */
+    --deep: #333333;        /* Cinza Escuro: tracks, empty meters */
+    --line: #252a35;
+    --line-2: #323846;
+    --text: #f2f4f8;
+    --muted: #9aa3b2;
+    --dim: #6b7383;
+
+    --blue: #00a1de;        /* Azul Digital: primary, links, focus */
+    --blue-dark: #0089bd;   /* primary hover (≈8% darker) */
+    --purple: #b14cf0;      /* Roxo Elétrico, softened to the saturation cap */
+    --cyan: #3fe0e8;        /* Ciano: decorative */
+    --green: #2be38a;       /* Verde Brilhante, softened: GREEN rating */
+    --amber: #ffa51f;       /* Laranja: AMBER rating */
+    --red: #ff4f64;         /* semantic red: RED rating */
+    --usdt: #8b95a7;
+
+    --font: "Poppins", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --radius: 8px;
+    --shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
   }
   * { box-sizing: border-box; }
-  html { font-size: 17px; }
+  html { font-size: 17px; scroll-behavior: smooth; scroll-padding-top: 80px; }
   body {
     margin: 0;
-    background: var(--page);
+    min-height: 100dvh;
+    background:
+      radial-gradient(900px 500px at 12% -10%, rgba(0, 161, 222, 0.16), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(177, 76, 240, 0.14), transparent 60%),
+      var(--bg);
+    background-repeat: no-repeat;
     color: var(--text);
-    font-family: "Segoe UI", "DejaVu Sans", system-ui, -apple-system, Roboto, sans-serif;
-    line-height: 1.4;
-  }
-  .num { font-variant-numeric: tabular-nums; }
-
-  /* ---------- Header ---------- */
-  header {
-    background: var(--navy);
-    color: #fff;
-    padding: 18px 28px;
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    flex-wrap: wrap;
-  }
-  .lights { display: flex; flex-direction: column; gap: 5px; }
-  .lights span { width: 16px; height: 16px; border-radius: 50%; display: block; }
-  .brand h1 { margin: 0; font-size: 1.9rem; letter-spacing: -0.01em; line-height: 1.1; }
-  .brand p { margin: 3px 0 0; color: #a9d6d8; font-size: 0.95rem; font-weight: 600; letter-spacing: 0.04em; }
-  .badges { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; }
-  .badge {
-    font-weight: 800; letter-spacing: 0.12em; font-size: 0.85rem;
-    padding: 7px 14px; border-radius: 6px; border: 2px solid;
-  }
-  .badge.sim { background: var(--amber); border-color: var(--amber); color: #1b1300; }
-  .badge.devnet { border-color: #a9d6d8; color: #a9d6d8; }
-
-  .sim-banner {
-    background: #fff4dc;
-    border-bottom: 1px solid #efd9a7;
-    color: #5a3d00;
-    padding: 8px 28px;
-    font-size: 0.9rem;
-  }
-  .sim-banner strong { letter-spacing: 0.08em; }
-
-  main { padding: 20px 28px 40px; max-width: 1600px; margin: 0 auto; }
-
-  /* ---------- Panels ---------- */
-  .panel {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 18px 20px;
-  }
-  .panel h2 {
-    margin: 0 0 12px;
-    font-size: 1.15rem;
-    color: var(--teal);
-    display: flex; align-items: baseline; gap: 10px;
-  }
-  .panel h2 small { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
-
-  /* ---------- Controls bar ---------- */
-  .controls {
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    margin-bottom: 8px;
-  }
-  .controls label { font-weight: 600; color: var(--muted); font-size: 0.9rem; }
-  select, button {
-    font: inherit;
+    font-family: var(--font);
     font-size: 1rem;
-    border-radius: 8px;
-    border: 1px solid var(--line);
-    padding: 9px 14px;
-    background: #fff;
-    color: var(--text);
-    cursor: pointer;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
   }
-  select { min-width: 300px; font-weight: 600; }
-  button:hover { border-color: var(--teal); }
-  button:focus-visible, select:focus-visible { outline: 3px solid #9fd3d6; outline-offset: 1px; }
-  button.primary { background: var(--teal); border-color: var(--teal); color: #fff; font-weight: 700; min-width: 110px; }
-  button.primary:hover { background: #0f666b; }
-  .speed { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  .speed button { border: 0; border-radius: 0; padding: 9px 14px; border-right: 1px solid var(--line); }
-  .speed button:last-child { border-right: 0; }
-  .speed button.active { background: var(--navy); color: #fff; font-weight: 700; }
-  .clock {
-    margin-left: auto; text-align: right;
+  .container { max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .ic { display: inline-block; vertical-align: middle; flex: none; }
+  a { color: var(--blue); }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  /* ---------- Buttons (design.md: Primary + Ghost) ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    border-radius: 0.5rem; padding: 12px 20px; font-weight: 600; font-size: 1rem;
+    cursor: pointer; border: 1.5px solid transparent;
+    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.2s;
   }
-  .clock .label { font-size: 0.75rem; letter-spacing: 0.1em; color: var(--muted); font-weight: 700; }
-  .clock .value { font-size: 1.35rem; font-weight: 700; }
-  .progress { height: 6px; background: var(--grey-bg); border-radius: 3px; overflow: hidden; margin-top: 10px; }
-  .progress div { height: 100%; width: 0; background: var(--teal); transition: width 0.15s linear; }
-  .scn-note { margin-top: 10px; color: var(--muted); font-size: 0.95rem; display: flex; gap: 16px; flex-wrap: wrap; }
-  .scn-note .expect { color: var(--text); }
-  .stylised { font-style: italic; color: #7a5300; }
-  .finish {
-    margin-top: 10px; padding: 10px 14px; border-radius: 8px;
-    background: var(--teal-soft); border: 1px solid #b5dcdd; font-weight: 600; display: none;
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--blue); color: #061018; min-width: 128px; }
+  .btn-primary:hover { background: var(--blue-dark); box-shadow: 0 6px 16px -6px rgba(0, 161, 222, 0.55); transform: translateY(-1px); }
+  .btn-ghost { background: transparent; border-color: var(--line-2); color: var(--blue); }
+  .btn-ghost:hover { background: rgba(0, 161, 222, 0.08); border-color: rgba(0, 161, 222, 0.45); }
+  .icon-btn {
+    display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 0.5rem;
+    background: var(--raised); border: 1px solid var(--line-2); color: var(--text); cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+  }
+  .icon-btn:hover { border-color: var(--blue); color: var(--blue); }
+
+  /* ---------- Sticky navigation (z-index 100) ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(11, 13, 18, 0.82);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav .container { display: flex; align-items: center; gap: 1.5rem; height: 68px; }
+  .logo { display: flex; align-items: center; gap: 0.75rem; text-decoration: none; color: var(--text); }
+  .logo-lights { display: flex; flex-direction: column; gap: 3px; }
+  .logo-lights i { width: 9px; height: 9px; border-radius: 50%; display: block; }
+  .logo-lights i:nth-child(1) { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .logo-lights i:nth-child(2) { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .logo-lights i:nth-child(3) { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .logo b { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; display: block; }
+  .logo small { display: block; font-size: 0.7rem; color: var(--muted); letter-spacing: 0.14em; font-weight: 500; }
+  .nav-links { display: flex; gap: 0.25rem; margin-left: 0.5rem; }
+  .nav-links a {
+    position: relative; color: var(--muted); text-decoration: none; font-size: 0.9rem; font-weight: 400;
+    padding: 0.5rem 0.75rem; border-radius: 0.5rem; transition: color 0.2s;
+  }
+  .nav-links a:hover { color: var(--text); }
+  .nav-links a.active { color: var(--text); font-weight: 500; }
+  .nav-links a.active::after {
+    content: ""; position: absolute; left: 0.75rem; right: 0.75rem; bottom: 0; height: 2px;
+    border-radius: 2px; background: var(--blue); box-shadow: 0 0 10px var(--blue);
+  }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
+  .live-mini {
+    display: flex; align-items: center; gap: 0.75rem; padding: 4px 4px 4px 12px;
+    border: 1px solid var(--line-2); border-radius: 0.5rem; background: var(--surface);
+  }
+  .live-mini .coin-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 600; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); flex: none; transition: background-color 0.2s, box-shadow 0.2s; }
+  .dot.amber { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .dot.red { background: var(--red); box-shadow: 0 0 10px var(--red); }
+  .live-mini .mono { font-size: 0.85rem; color: var(--text); }
+  .badge {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; padding: 6px 10px;
+    border-radius: 0.5rem; border: 1.5px solid; white-space: nowrap;
+  }
+  .badge.sim { background: var(--amber); border-color: var(--amber); color: #1a1100; }
+  .badge.devnet { color: var(--cyan); border-color: rgba(63, 224, 232, 0.5); background: rgba(63, 224, 232, 0.06); }
+
+  .sim-ribbon {
+    background: linear-gradient(90deg, rgba(255, 165, 31, 0.16), rgba(255, 165, 31, 0.05));
+    border-bottom: 1px solid rgba(255, 165, 31, 0.28);
+    color: #ffd9a0; font-size: 0.85rem; padding: 0.5rem 0;
+  }
+  .sim-ribbon strong { letter-spacing: 0.14em; color: var(--amber); margin-right: 0.5rem; }
+
+  /* ---------- Hero: split screen (text left, player right) ---------- */
+  .hero { position: relative; overflow: hidden; }
+  #particles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.9; }
+  .hero .container {
+    position: relative; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    gap: 3rem; align-items: center; padding-top: 3rem; padding-bottom: 3rem;
+  }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 0.5rem; font-family: var(--mono); font-size: 0.75rem;
+    letter-spacing: 0.12em; color: var(--muted); border: 1px solid var(--line-2); border-radius: 999px;
+    padding: 5px 12px; background: rgba(18, 21, 28, 0.7);
+  }
+  .eyebrow i { width: 7px; height: 7px; border-radius: 50%; background: var(--purple); box-shadow: 0 0 8px var(--purple); }
+  .hero h1 {
+    font-size: clamp(2.5rem, 5vw, 4rem); font-weight: 700; line-height: 1.05; letter-spacing: -0.03em;
+    margin: 1.25rem 0 1rem;
+  }
+  .grad {
+    background: linear-gradient(90deg, var(--blue), var(--purple) 70%, var(--cyan));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .lead { color: var(--muted); font-size: 1.05rem; max-width: 56ch; margin: 0 0 1.75rem; }
+
+  /* Detect → Respond → Prove: tier progress, shown honestly */
+  .layers { list-style: none; padding: 0; margin: 0; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .layer {
+    display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.9rem 0.55rem 0.6rem;
+    border-radius: 0.5rem; border: 1px solid var(--line-2); background: rgba(18, 21, 28, 0.8);
+  }
+  .layer .layer-ic { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 0.5rem; background: var(--raised); color: var(--dim); }
+  .layer b { display: block; font-size: 0.95rem; font-weight: 600; line-height: 1.2; }
+  .layer small { display: block; font-size: 0.72rem; color: var(--dim); line-height: 1.2; }
+  .layer.live { border-color: rgba(0, 161, 222, 0.55); box-shadow: 0 0 24px -8px rgba(0, 161, 222, 0.6); }
+  .layer.live .layer-ic { background: rgba(0, 161, 222, 0.16); color: var(--blue); }
+  .layer.live small { color: var(--blue); }
+  .layer.locked b { color: var(--muted); }
+  .layers .sep { color: var(--dim); }
+  .xp { display: flex; align-items: center; gap: 0.75rem; margin-top: 1rem; font-size: 0.8rem; color: var(--muted); }
+  .xp-track { width: 160px; height: 6px; border-radius: 3px; background: var(--deep); overflow: hidden; }
+  .xp-track div { height: 100%; background: linear-gradient(90deg, var(--blue), var(--purple)); border-radius: 3px; }
+
+  /* ---------- Cards (design.md: 8px radius, 1px border, subtle shadow) ---------- */
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .card-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; }
+  .card-head h2, .card-head h3 { margin: 0; font-size: 1.1rem; font-weight: 600; letter-spacing: -0.01em; }
+  .card-head .ic { color: var(--blue); }
+  .chip {
+    font-size: 0.72rem; font-weight: 500; letter-spacing: 0.04em; color: var(--muted);
+    border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 10px; white-space: nowrap;
   }
 
-  /* ---------- Layout grid ---------- */
-  .grid {
-    display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr);
-    gap: 18px;
-    margin-top: 18px;
+  /* ---------- Scenario player deck ---------- */
+  .deck { position: relative; padding: 1.5rem; overflow: hidden; }
+  .deck::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+    background: linear-gradient(90deg, var(--blue), var(--purple), var(--cyan));
   }
-  .left { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
-  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .deck .card-head .chip { margin-left: auto; }
+  .field-label { display: block; font-size: 0.875rem; font-weight: 500; letter-spacing: 0.02em; color: var(--muted); margin-bottom: 0.5rem; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 1rem; }
+  .tile {
+    display: flex; align-items: center; gap: 0.75rem; text-align: left; cursor: pointer;
+    padding: 0.7rem 0.8rem; border-radius: 0.5rem; background: var(--raised); border: 1px solid var(--line-2);
+    transition: border-color 0.2s, background-color 0.2s, transform 0.2s;
+  }
+  .tile:hover { border-color: rgba(0, 161, 222, 0.5); transform: translateY(-1px); }
+  .tile .letter {
+    display: grid; place-items: center; width: 34px; height: 34px; border-radius: 0.5rem; flex: none;
+    font-weight: 700; background: var(--deep); color: var(--text); transition: background-color 0.2s;
+  }
+  .tile b { display: block; font-size: 0.92rem; font-weight: 600; line-height: 1.25; }
+  .tile small { display: block; font-size: 0.75rem; color: var(--muted); line-height: 1.3; }
+  .tile.active { border-color: var(--blue); background: rgba(0, 161, 222, 0.1); }
+  .tile.active .letter { background: var(--blue); color: #061018; }
+  .scn-info { font-size: 0.9rem; color: var(--muted); margin: 0 0 1rem; min-height: 3.2em; }
+  .scn-info .expect { display: block; color: var(--text); margin-top: 0.25rem; }
+  .scn-info .stylised { display: block; color: #ffc875; font-style: italic; margin-top: 0.25rem; font-size: 0.82rem; }
+  .deck-controls { display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap; }
+  .seg { display: inline-flex; background: var(--raised); border: 1px solid var(--line-2); border-radius: 0.5rem; padding: 3px; }
+  .seg button {
+    border: 0; background: transparent; color: var(--muted); padding: 8px 14px; border-radius: 6px;
+    cursor: pointer; font-weight: 600; font-family: var(--mono); font-size: 0.9rem; transition: background-color 0.2s, color 0.2s;
+  }
+  .seg button:hover { color: var(--text); }
+  .seg button.active { background: var(--blue); color: #061018; }
+  .speed-group { margin-left: auto; }
+  .clock-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-top: 1.25rem; flex-wrap: wrap; }
+  .clock-row .field-label { margin: 0; }
+  .clock { font-family: var(--mono); font-size: 1.2rem; font-weight: 500; }
+  .track { height: 6px; background: var(--deep); border-radius: 3px; overflow: hidden; margin-top: 0.6rem; }
+  .track div {
+    height: 100%; width: 0; border-radius: 3px;
+    background: linear-gradient(90deg, var(--blue), var(--purple));
+    box-shadow: 0 0 10px rgba(0, 161, 222, 0.6); transition: width 0.2s linear;
+  }
 
-  /* ---------- Rating cards ---------- */
+  /* ---------- Sections ---------- */
+  section.block { padding-top: 2.5rem; }
+  section.block + section.block { padding-top: clamp(4rem, 8vw, 6rem); }
+  .section-head { display: flex; align-items: flex-end; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .section-head h2 { margin: 0; font-size: 2.25rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .section-head p { margin: 0; color: var(--muted); max-width: 60ch; }
+  .kicker { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.14em; color: var(--blue); display: block; margin-bottom: 0.4rem; }
+
+  .board { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 1.25rem; align-items: start; }
+  .board-main { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+
+  /* ---------- Rating cards with neon status glow ---------- */
   .coin-card {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-left: 10px solid var(--green);
-    border-radius: 10px;
-    padding: 16px 18px;
-    transition: background-color 0.15s, border-color 0.15s;
+    position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 1.25rem 1.4rem 1.2rem; overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
   }
-  .coin-card.green { border-left-color: var(--green); background: var(--green-bg); }
-  .coin-card.amber { border-left-color: var(--amber); background: var(--amber-bg); }
-  .coin-card.red   { border-left-color: var(--red);   background: var(--red-bg); }
-  .coin-top { display: flex; align-items: center; gap: 10px; }
-  .coin-name { font-size: 1.5rem; font-weight: 800; }
-  .target-tag {
-    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; color: var(--muted);
-    border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; background: #fff;
+  .coin-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--green); transition: background-color 0.2s; }
+  .coin-card::after {       /* soft neon wash, animated with opacity only */
+    content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.6;
+    background: radial-gradient(420px 180px at 85% 0%, rgba(43, 227, 138, 0.14), transparent 70%);
+    transition: opacity 0.2s;
   }
+  .coin-card.green { border-color: rgba(43, 227, 138, 0.3); box-shadow: 0 0 32px -12px rgba(43, 227, 138, 0.45); }
+  .coin-card.amber { border-color: rgba(255, 165, 31, 0.55); box-shadow: 0 0 36px -10px rgba(255, 165, 31, 0.55); }
+  .coin-card.amber::before { background: var(--amber); }
+  .coin-card.amber::after { background: radial-gradient(420px 180px at 85% 0%, rgba(255, 165, 31, 0.2), transparent 70%); }
+  .coin-card.red { border-color: rgba(255, 79, 100, 0.7); box-shadow: 0 0 40px -8px rgba(255, 79, 100, 0.6); }
+  .coin-card.red::before { background: var(--red); }
+  .coin-card.red::after { background: radial-gradient(460px 220px at 85% 0%, rgba(255, 79, 100, 0.26), transparent 70%); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+  .coin-card > * { position: relative; z-index: 1; }
+  .coin-top { display: flex; align-items: center; gap: 0.75rem; }
+  .coin-logo {
+    display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%;
+    font-weight: 700; font-size: 0.8rem; color: #fff; flex: none;
+  }
+  .coin-name { font-size: 1.35rem; font-weight: 700; line-height: 1.1; }
+  .coin-sub { font-size: 0.72rem; color: var(--muted); letter-spacing: 0.08em; font-weight: 500; }
   .pill {
-    margin-left: auto; font-weight: 800; letter-spacing: 0.1em; font-size: 1.05rem;
-    color: #fff; padding: 6px 16px; border-radius: 999px; background: var(--green);
+    margin-left: auto; font-weight: 700; letter-spacing: 0.12em; font-size: 0.95rem;
+    padding: 6px 16px; border-radius: 999px; color: #04140b; background: var(--green);
+    box-shadow: 0 0 18px -2px rgba(43, 227, 138, 0.7);
   }
-  .pill.amber { background: var(--amber); color: #1b1300; }
-  .pill.red { background: var(--red); }
-  .coin-price { font-size: 2.8rem; font-weight: 800; margin: 6px 0 0; line-height: 1.1; }
-  .coin-reason { font-size: 1.2rem; font-weight: 600; margin: 4px 0 12px; min-height: 1.7em; }
-  .signals { border-top: 1px solid rgba(0,0,0,0.08); padding-top: 10px; display: grid; gap: 5px; }
-  .sig { display: flex; align-items: center; gap: 9px; font-size: 0.98rem; }
-  .sig .dot { width: 13px; height: 13px; border-radius: 50%; background: var(--green); flex: none; }
-  .sig .dot.amber { background: var(--amber); }
-  .sig .dot.red { background: var(--red); }
-  .sig .val { margin-left: auto; font-weight: 700; }
-  .hold { margin-top: 12px; font-size: 0.9rem; color: var(--muted); }
-  .hold-bar { height: 8px; background: rgba(0,0,0,0.08); border-radius: 4px; overflow: hidden; margin-top: 5px; }
-  .hold-bar div { height: 100%; width: 0; background: var(--amber); transition: width 0.15s; }
-  .hold-bar div.red { background: var(--red); }
+  .pill.amber { background: var(--amber); color: #1a1100; box-shadow: 0 0 18px -2px rgba(255, 165, 31, 0.8); }
+  .pill.red { background: var(--red); color: #1f0206; box-shadow: 0 0 22px 0 rgba(255, 79, 100, 0.85); }
+  .pill.bump { animation: bump 0.25s var(--ease); }
+  @keyframes bump { from { transform: scale(1.18); } to { transform: scale(1); } }
+  .coin-price { font-family: var(--mono); font-size: 2.7rem; font-weight: 700; line-height: 1.1; margin: 0.9rem 0 0.1rem; letter-spacing: -0.02em; }
+  .coin-reason { font-size: 1.15rem; font-weight: 600; margin: 0 0 1rem; min-height: 1.7em; }
+  .signals { display: grid; gap: 0.35rem; border-top: 1px solid var(--line); padding-top: 0.85rem; }
+  .sig { display: flex; align-items: center; gap: 0.6rem; font-size: 0.92rem; color: var(--muted); }
+  .sig .val { margin-left: auto; font-family: var(--mono); font-size: 0.9rem; font-weight: 500; color: var(--text); }
+  .meter { margin-top: 1rem; }
+  .meter-text { font-size: 0.8rem; color: var(--muted); display: flex; justify-content: space-between; gap: 0.5rem; }
+  .meter-text b { font-weight: 600; color: var(--text); letter-spacing: 0.06em; font-size: 0.72rem; }
+  .segs { display: flex; gap: 4px; margin-top: 0.4rem; }
+  .segs i { flex: 1; height: 8px; border-radius: 2px; background: var(--deep); transition: background-color 0.2s, box-shadow 0.2s; }
+  .segs i.on-amber { background: var(--amber); box-shadow: 0 0 8px rgba(255, 165, 31, 0.7); }
+  .segs i.on-red { background: var(--red); box-shadow: 0 0 8px rgba(255, 79, 100, 0.8); }
+  .segs i.hide { display: none; }
 
-  /* ---------- Chart ---------- */
+  /* ---------- Chart card ---------- */
+  .chart-card { padding: 1.25rem 1.4rem; }
+  .chart-card .card-head { flex-wrap: wrap; }
+  .legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; margin-left: auto; font-size: 0.78rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 18px; height: 10px; border-radius: 2px; display: inline-block; }
+  .sw.line { height: 3px; }
   .chart-wrap { position: relative; height: 360px; }
   .chart-fallback {
-    display: none; height: 100%; align-items: center; justify-content: center;
-    color: var(--muted); text-align: center; background: var(--grey-bg); border-radius: 8px; padding: 20px;
+    display: none; height: 100%; align-items: center; justify-content: center; flex-direction: column; gap: 0.5rem;
+    color: var(--muted); text-align: center; background: var(--raised); border-radius: var(--radius); padding: 1.5rem;
   }
-  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; font-size: 0.88rem; color: var(--muted); }
-  .legend span { display: inline-flex; align-items: center; gap: 6px; }
-  .sw { width: 22px; height: 12px; border-radius: 3px; display: inline-block; }
-  .sw.line { height: 4px; }
 
-  /* ---------- Alert log ---------- */
-  .log-panel { display: flex; flex-direction: column; min-height: 0; }
-  .log-list { overflow-y: auto; max-height: 820px; display: flex; flex-direction: column; gap: 10px; }
-  .log-empty { color: var(--muted); background: var(--grey-bg); border-radius: 8px; padding: 14px; }
-  .log-item {
-    border: 1px solid var(--line); border-left: 6px solid var(--amber);
-    border-radius: 8px; padding: 10px 12px; background: #fff;
-    animation: pop 0.35s ease-out;
+  /* ---------- Alert feed ---------- */
+  .feed { padding: 1.25rem; position: sticky; top: 88px; }
+  .feed .card-head .chip { margin-left: auto; }
+  .feed-list { display: flex; flex-direction: column; gap: 0.75rem; max-height: 720px; overflow-y: auto; }
+  .empty { text-align: center; padding: 2rem 1rem; border: 1px dashed var(--line-2); border-radius: var(--radius); }
+  .empty-ic {
+    display: inline-grid; place-items: center; width: 56px; height: 56px; border-radius: 50%;
+    background: rgba(0, 161, 222, 0.1); color: var(--blue); margin-bottom: 0.75rem;
+    box-shadow: 0 0 24px -6px rgba(0, 161, 222, 0.6);
   }
-  .log-item.red { border-left-color: var(--red); }
-  @keyframes pop { from { transform: translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
-  .log-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .log-time { font-weight: 700; }
-  .mini-pill { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 999px; color: #fff; }
-  .mini-pill.amber { background: var(--amber); color: #1b1300; }
-  .mini-pill.red { background: var(--red); }
-  .rule-tag { font-size: 0.78rem; font-weight: 700; color: var(--teal); border: 1px solid #b5dcdd; border-radius: 4px; padding: 1px 6px; }
-  .status { margin-left: auto; font-size: 0.78rem; color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 1px 6px; }
-  .log-reason { margin: 5px 0 6px; font-size: 0.98rem; }
-  .memo { font-family: var(--mono); font-size: 0.74rem; color: var(--muted); background: var(--grey-bg); border-radius: 5px; padding: 5px 7px; word-break: break-all; }
+  .empty b { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+  .empty p { margin: 0 0 1rem; color: var(--muted); font-size: 0.88rem; }
+  .alert-item {
+    display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 0.75rem;
+    padding: 0.85rem; border-radius: var(--radius); background: var(--raised); border: 1px solid var(--line-2);
+    animation: enter 0.42s var(--ease) both;
+  }
+  .alert-item.amber { border-color: rgba(255, 165, 31, 0.4); }
+  .alert-item.red { border-color: rgba(255, 79, 100, 0.5); }
+  .avatar { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; }
+  .alert-item.amber .avatar { background: rgba(255, 165, 31, 0.15); color: var(--amber); box-shadow: 0 0 14px -4px var(--amber); }
+  .alert-item.red .avatar { background: rgba(255, 79, 100, 0.15); color: var(--red); box-shadow: 0 0 14px -4px var(--red); }
+  .alert-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; font-size: 0.9rem; }
+  .alert-head b { font-weight: 600; }
+  .alert-head time { margin-left: auto; font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+  .mini-pill { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.1em; padding: 2px 8px; border-radius: 999px; }
+  .mini-pill.amber { background: var(--amber); color: #1a1100; }
+  .mini-pill.red { background: var(--red); color: #1f0206; }
+  .rule { font-family: var(--mono); font-size: 0.7rem; color: var(--purple); border: 1px solid rgba(177, 76, 240, 0.45); border-radius: 4px; padding: 0 6px; }
+  .alert-reason { font-size: 0.9rem; margin: 0.3rem 0 0.5rem; }
+  .memo {
+    font-family: var(--mono); font-size: 0.7rem; line-height: 1.5; color: var(--muted); word-break: break-all;
+    background: #0e1016; border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.55rem;
+  }
+  .chain { display: inline-flex; align-items: center; gap: 4px; margin-top: 0.45rem; font-size: 0.72rem; color: var(--dim); }
+  @keyframes enter { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 
-  /* ---------- Method panel ---------- */
-  .method { margin-top: 18px; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
-  th { background: var(--navy); color: #fff; text-align: left; padding: 9px 10px; font-weight: 700; }
-  td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  tr:nth-child(even) td { background: #f3f6f8; }
-  td.g { color: var(--green); font-weight: 700; }
-  td.a { color: #a86a00; font-weight: 700; }
-  td.r { color: var(--red); font-weight: 700; }
-  .method-notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 16px; }
-  .note { background: var(--grey-bg); border-left: 4px solid var(--teal); border-radius: 6px; padding: 10px 14px; font-size: 0.93rem; }
-  .note b { display: block; margin-bottom: 3px; }
-  .assume { font-size: 0.78rem; font-weight: 800; letter-spacing: 0.08em; color: #7a5300; background: #fff4dc; border: 1px solid #efd9a7; border-radius: 4px; padding: 2px 8px; }
-  footer { text-align: center; color: var(--muted); font-size: 0.85rem; padding: 10px 28px 30px; }
-  kbd { font-family: var(--mono); font-size: 0.8rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: #fff; }
+  /* ---------- Method (asymmetric grid) ---------- */
+  .method-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+  .table-card { padding: 0.5rem; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  th { text-align: left; font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 0.9rem 1rem; border-bottom: 1px solid var(--line-2); }
+  td { padding: 1rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.how { color: var(--muted); max-width: 44ch; }
+  td .th { font-family: var(--mono); font-weight: 700; white-space: nowrap; }
+  td.g .th { color: var(--green); } td.a .th { color: var(--amber); } td.r .th { color: var(--red); }
+  .assume { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; color: var(--amber); border: 1.5px solid rgba(255, 165, 31, 0.55); border-radius: 0.5rem; padding: 4px 10px; align-self: center; }
+  .notes { display: grid; gap: 0.75rem; }
+  .note { padding: 1rem 1.1rem; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 0.75rem; }
+  .note .n-ic { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 0.5rem; background: rgba(177, 76, 240, 0.12); color: var(--purple); }
+  .note b { display: block; font-weight: 600; margin-bottom: 0.15rem; }
+  .note p { margin: 0; color: var(--muted); font-size: 0.88rem; }
 
-  /* ---------- Smaller screens ---------- */
+  footer { color: var(--dim); font-size: 0.82rem; padding: 3rem 0 2.5rem; margin-top: 4rem; border-top: 1px solid var(--line); }
+  footer .container { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  kbd { font-family: var(--mono); font-size: 0.75rem; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; color: var(--muted); background: var(--surface); }
+
+  /* ---------- Toast (z-index 500) ---------- */
+  .toast {
+    position: fixed; right: 1.5rem; bottom: 1.5rem; z-index: 500; max-width: 420px;
+    display: grid; grid-template-columns: 36px minmax(0, 1fr) 36px; gap: 0.75rem; align-items: start;
+    padding: 1rem; background: var(--raised); border: 1px solid var(--line-2); border-radius: var(--radius);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    opacity: 0; transform: translateY(16px); pointer-events: none; transition: opacity 0.3s var(--ease), transform 0.3s var(--ease);
+  }
+  .toast.show { opacity: 1; transform: none; pointer-events: auto; }
+  .toast::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 8px 0 0 8px; background: linear-gradient(var(--blue), var(--purple)); }
+  .toast .t-ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: rgba(43, 227, 138, 0.14); color: var(--green); }
+  .toast b { display: block; font-weight: 600; }
+  .toast p { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.88rem; }
+
+  /* ---------- Entry animation: fade + translate-Y, staggered 80ms ---------- */
+  .reveal { animation: enter 0.42s var(--ease) both; }
+  .reveal:nth-child(2) { animation-delay: 80ms; }
+  .reveal:nth-child(3) { animation-delay: 160ms; }
+
+  /* ---------- Responsive: collapse below 768px, no horizontal overflow ---------- */
   @media (max-width: 1100px) {
-    .grid { grid-template-columns: 1fr; }
-    .log-list { max-height: 480px; }
+    .board { grid-template-columns: 1fr; }
+    .feed { position: static; }
+    .method-grid { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
   }
-  @media (max-width: 700px) {
+  @media (max-width: 900px) {
+    .hero .container { grid-template-columns: 1fr; gap: 2rem; }
+  }
+  @media (max-width: 768px) {
     html { font-size: 15px; }
-    header, main, .sim-banner { padding-left: 16px; padding-right: 16px; }
+    .container { padding: 0 1rem; }
     .cards { grid-template-columns: 1fr; }
-    select { min-width: 0; width: 100%; }
-    .clock { margin-left: 0; text-align: left; }
+    .live-mini .coin-dot, .badge.devnet { display: none; }
+    .nav .container { gap: 0.75rem; }
+    .logo small { display: none; }
+    .tiles { grid-template-columns: 1fr; }
+    .speed-group { margin-left: 0; }
     .chart-wrap { height: 280px; }
-    .method-scroll { overflow-x: auto; }
+    .section-head h2 { font-size: 1.75rem; }
+    .toast { left: 1rem; right: 1rem; max-width: none; }
+  }
+  @media (max-width: 480px) {
+    .live-mini { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    #particles { display: none; }
   }
 </style>
 </head>
 <body>
 
-<!-- 1. HEADER: product name + SIMULATION and DEVNET badges -->
-<header>
-  <div class="lights" aria-hidden="true">
-    <span style="background:var(--green)"></span>
-    <span style="background:var(--amber)"></span>
-    <span style="background:var(--red)"></span>
+<!-- 1. NAVIGATION: product name, live mini-status, SIMULATION + DEVNET badges -->
+<nav class="nav" aria-label="Main">
+  <div class="container">
+    <a class="logo" href="#top">
+      <span class="logo-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span><small>STABLECOIN</small><b>Circuit Breaker</b></span>
+    </a>
+    <div class="nav-links">
+      <a href="#top" data-spy="top" class="active">Player</a>
+      <a href="#board" data-spy="board">Risk board</a>
+      <a href="#method" data-spy="method">Method</a>
+    </div>
+    <div class="nav-right">
+      <!-- Live mini-status: lets the presenter see and control the run while scrolled down -->
+      <div class="live-mini" title="Live status of the running scenario">
+        <span class="coin-dot"><i class="dot" id="navDot-USDC"></i>USDC</span>
+        <span class="coin-dot"><i class="dot" id="navDot-USDT"></i>USDT</span>
+        <span class="mono" id="navClock">--:--</span>
+        <button class="icon-btn" id="navPlay" aria-label="Play"></button>
+      </div>
+      <span class="badge sim">SIMULATION</span>
+      <span class="badge devnet" title="Solana devnet only. Blockchain steps arrive in Tier 2.">DEVNET</span>
+    </div>
   </div>
-  <div class="brand">
-    <h1>Stablecoin Circuit Breaker</h1>
-    <p>DETECT → RESPOND → PROVE</p>
+</nav>
+<div class="sim-ribbon">
+  <div class="container">
+    <strong>SIMULATION</strong>Prices come from a scripted scenario, not live market data.
+    Thresholds are starting assumptions. Flags stress; does not predict depegs. Not investment advice.
   </div>
-  <div class="badges">
-    <span class="badge sim">SIMULATION</span>
-    <span class="badge devnet" title="Solana devnet only. Blockchain steps arrive in Tier 2.">DEVNET</span>
-  </div>
-</header>
-<div class="sim-banner">
-  <strong>SIMULATION</strong> · Prices come from a scripted scenario, not live market data.
-  Thresholds are starting assumptions. Flags stress; does not predict depegs. Not investment advice.
 </div>
 
-<main>
-  <!-- 2. CONTROLS BAR -->
-  <section class="panel" aria-label="Scenario controls">
-    <div class="controls">
-      <label for="scenario">Scenario</label>
-      <select id="scenario"></select>
-      <button id="playBtn" class="primary">▶ Play</button>
-      <button id="resetBtn">↺ Reset</button>
-      <label>Speed</label>
-      <div class="speed" id="speed">
-        <button data-speed="1">1×</button>
-        <button data-speed="10">10×</button>
-        <button data-speed="60" class="active">60×</button>
-      </div>
-      <div class="clock">
-        <div class="label">SIMULATED TIME</div>
-        <div class="value num" id="clock">—</div>
-      </div>
+<!-- 2. HERO: story on the left, scenario player on the right -->
+<header class="hero" id="top">
+  <canvas id="particles" aria-hidden="true"></canvas>
+  <div class="container">
+    <div class="reveal">
+      <span class="eyebrow"><i></i>BUILD IRL VOL. 1 · SOLANA · DUBLIN</span>
+      <h1>Detect stress.<br>Trigger the plan.<br><span class="grad">Prove it on Solana.</span></h1>
+      <p class="lead">A treasury early-warning demo. It rates stablecoin stress green, amber or red,
+        waits for a colour to hold before it raises an alert, and prepares every step to be recorded on Solana devnet.</p>
+      <ol class="layers" aria-label="Product layers">
+        <li class="layer live"><span class="layer-ic" data-icon="eye"></span><span><b>Detect</b><small>Live · Tier 1</small></span></li>
+        <li class="sep" data-icon="chevron"></li>
+        <li class="layer locked"><span class="layer-ic" data-icon="lock"></span><span><b>Respond</b><small>Unlocks in Tier 3</small></span></li>
+        <li class="sep" data-icon="chevron"></li>
+        <li class="layer locked"><span class="layer-ic" data-icon="lock"></span><span><b>Prove</b><small>Unlocks in Tier 2</small></span></li>
+      </ol>
+      <div class="xp"><div class="xp-track"><div style="width:33.3%"></div></div>1 of 3 layers live</div>
     </div>
-    <div class="progress"><div id="progress"></div></div>
-    <div class="scn-note">
-      <span id="scnDesc"></span>
-      <span class="expect" id="scnExpect"></span>
-    </div>
-    <div class="scn-note"><span class="stylised" id="scnStylised"></span></div>
-    <div class="finish" id="finish"></div>
-  </section>
 
-  <div class="grid">
-    <div class="left">
-      <!-- 3. RATING CARDS (one per coin, built by JavaScript) -->
-      <section class="cards" id="cards" aria-label="Rating cards"></section>
-
-      <!-- 4. PRICE CHART with green / amber / red bands -->
-      <section class="panel">
-        <h2>Price vs $1 <small>shaded bands show the rating zones</small></h2>
-        <div class="chart-wrap">
-          <canvas id="chart" aria-label="Price chart"></canvas>
-          <div class="chart-fallback" id="chartFallback">
-            Chart could not load (Chart.js needs an internet connection).<br>
-            The simulation, rating cards and alert log still work.
+    <!-- SCENARIO PLAYER -->
+    <section class="card deck reveal" aria-label="Scenario player">
+      <div class="card-head">
+        <span data-icon="activity"></span>
+        <h2>Scenario player</h2>
+        <span class="chip mono" id="progressPct">0%</span>
+      </div>
+      <span class="field-label">Scenario</span>
+      <div class="tiles" id="tiles"></div>
+      <p class="scn-info">
+        <span id="scnDesc"></span>
+        <span class="expect" id="scnExpect"></span>
+        <span class="stylised" id="scnStylised"></span>
+      </p>
+      <div class="deck-controls">
+        <button class="btn btn-primary" id="playBtn"></button>
+        <button class="btn btn-ghost" id="resetBtn"><span data-icon="reset"></span>Reset</button>
+        <div class="speed-group">
+          <span class="field-label">Speed</span>
+          <div class="seg" id="speed">
+            <button data-speed="1">1×</button>
+            <button data-speed="10">10×</button>
+            <button data-speed="60" class="active">60×</button>
           </div>
         </div>
-        <div class="legend">
-          <span><i class="sw line" style="background:var(--usdc)"></i>USDC</span>
-          <span><i class="sw line" style="background:var(--usdt)"></i>USDT</span>
-          <span><i class="sw line" style="background:#14213d"></i>$1 peg</span>
-          <span><i class="sw" style="background:rgba(46,139,87,.22)"></i>Green: within 0.3%</span>
-          <span><i class="sw" style="background:rgba(217,140,10,.28)"></i>Amber: 0.3–1%</span>
-          <span><i class="sw" style="background:rgba(192,57,43,.22)"></i>Red: more than 1%</span>
-        </div>
-      </section>
-    </div>
-
-    <!-- 6. ALERT LOG -->
-    <section class="panel log-panel" aria-label="Alert log">
-      <h2>Alert log <small id="alertCount">0 alerts</small></h2>
-      <div class="log-list" id="log"></div>
+      </div>
+      <div class="clock-row">
+        <span class="field-label">Simulated time</span>
+        <span class="clock" id="clock">—</span>
+      </div>
+      <div class="track"><div id="progress"></div></div>
     </section>
   </div>
+</header>
 
-  <!-- 8. METHOD PANEL: thresholds shown as starting assumptions -->
-  <section class="panel method">
-    <h2>Method <span class="assume">STARTING ASSUMPTIONS</span></h2>
-    <div class="method-scroll">
-    <table>
-      <thead>
-        <tr><th>Signal</th><th>How it is calculated</th><th>Green</th><th>Amber</th><th>Red</th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><b>Price deviation</b></td>
-          <td>|price − 1| × 100, in %</td>
-          <td class="g">&lt; 0.3%</td><td class="a">0.3% – 1%</td><td class="r">&gt; 1%</td>
-        </tr>
-        <tr>
-          <td><b>Volatility</b></td>
-          <td>Standard deviation of the minute-to-minute price moves across the last 15 readings,
-              compared with the coin's calm level. The 2 most extreme moves are left out, so a single spike does not count as volatility.</td>
-          <td class="g">&lt; 2×</td><td class="a">2× – 4×</td><td class="r">&gt; 4×</td>
-        </tr>
-        <tr>
-          <td><b>Supply change</b></td>
-          <td>% change in circulating supply over the last 60 readings (one hour)</td>
-          <td class="g">&lt; 1%</td><td class="a">1% – 3%</td><td class="r">&gt; 3%</td>
-        </tr>
-      </tbody>
-    </table>
+<main class="container">
+  <!-- 3–6. RISK BOARD: rating cards, chart, alert feed -->
+  <section class="block" id="board">
+    <div class="section-head">
+      <div>
+        <span class="kicker">DETECT</span>
+        <h2>Live risk board</h2>
+      </div>
+      <p>Lights change instantly. An alert is logged only when a colour holds: amber for 3 simulated minutes, red for 5.</p>
     </div>
-    <div class="method-notes">
-      <div class="note"><b>Overall rating = the worst signal</b>If any one warning light is red, the coin is red. Conservative, and easy to explain.</div>
-      <div class="note"><b>Time-in-colour rule</b>Lights change instantly. An <em>alert</em> is logged only when amber (or worse) holds for 3 simulated minutes (rule R1), or red holds for 5 (rule R2).</div>
-      <div class="note"><b>One alert per episode</b>Each level alerts once. The episode ends when the coin has been green again for 5 simulated minutes.</div>
-      <div class="note"><b>Honest limits</b>Simulated data only. One reading per simulated minute. It flags stress; it does not predict depegs. Thresholds would be calibrated against past events.</div>
+    <div class="board">
+      <div class="board-main">
+        <div class="cards" id="cards" aria-label="Rating cards"></div>
+
+        <div class="card chart-card">
+          <div class="card-head">
+            <span data-icon="chart"></span>
+            <h3>Price vs $1</h3>
+            <div class="legend">
+              <span><i class="sw line" style="background:var(--blue)"></i>USDC</span>
+              <span><i class="sw line" style="background:var(--usdt)"></i>USDT</span>
+              <span><i class="sw" style="background:rgba(43,227,138,.3)"></i>&lt; 0.3%</span>
+              <span><i class="sw" style="background:rgba(255,165,31,.4)"></i>0.3–1%</span>
+              <span><i class="sw" style="background:rgba(255,79,100,.35)"></i>&gt; 1%</span>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="chart" aria-label="Price chart"></canvas>
+            <div class="chart-fallback" id="chartFallback">
+              <span data-icon="chart" data-size="28"></span>
+              Chart could not load (Chart.js needs an internet connection).<br>
+              The simulation, rating cards and alert feed still work.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="card feed" aria-label="Alert feed">
+        <div class="card-head">
+          <span data-icon="bell"></span>
+          <h3>Alert feed</h3>
+          <span class="chip" id="alertCount">0 alerts</span>
+        </div>
+        <div class="feed-list" id="log"></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- 8. METHOD: thresholds labelled as starting assumptions -->
+  <section class="block" id="method">
+    <div class="section-head">
+      <div>
+        <span class="kicker">HONEST METHOD</span>
+        <h2>How the rating works</h2>
+      </div>
+      <span class="assume">STARTING ASSUMPTIONS</span>
+    </div>
+    <div class="method-grid">
+      <div class="card table-card">
+        <table>
+          <thead>
+            <tr><th>Signal</th><th>How it is calculated</th><th>Green</th><th>Amber</th><th>Red</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>Price deviation</b></td>
+              <td class="how">|price − 1| × 100, in %</td>
+              <td class="g"><span class="th">&lt; 0.3%</span></td><td class="a"><span class="th">0.3–1%</span></td><td class="r"><span class="th">&gt; 1%</span></td>
+            </tr>
+            <tr>
+              <td><b>Volatility</b></td>
+              <td class="how">Standard deviation of the minute-to-minute price moves across the last 15 readings,
+                compared with the coin's calm level. The 2 most extreme moves are left out, so a single spike does not count as volatility.</td>
+              <td class="g"><span class="th">&lt; 2×</span></td><td class="a"><span class="th">2–4×</span></td><td class="r"><span class="th">&gt; 4×</span></td>
+            </tr>
+            <tr>
+              <td><b>Supply change</b></td>
+              <td class="how">% change in circulating supply over the last 60 readings (one hour)</td>
+              <td class="g"><span class="th">&lt; 1%</span></td><td class="a"><span class="th">1–3%</span></td><td class="r"><span class="th">&gt; 3%</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="notes">
+        <div class="card note"><span class="n-ic" data-icon="layers"></span><div><b>Overall rating = the worst signal</b><p>If any one warning light is red, the coin is red. Conservative, and easy to explain.</p></div></div>
+        <div class="card note"><span class="n-ic" data-icon="timer"></span><div><b>Time-in-colour rule</b><p>An alert is logged only when amber (or worse) holds for 3 simulated minutes (rule R1), or red holds for 5 (rule R2).</p></div></div>
+        <div class="card note"><span class="n-ic" data-icon="repeat"></span><div><b>One alert per episode</b><p>Each level alerts once. The episode ends when the coin has been green again for 5 simulated minutes.</p></div></div>
+        <div class="card note"><span class="n-ic" data-icon="info"></span><div><b>Honest limits</b><p>Simulated data, one reading per simulated minute. It flags stress; it does not predict depegs. Thresholds would be calibrated against past events.</p></div></div>
+      </div>
     </div>
   </section>
 </main>
 
 <footer>
-  Simulation and devnet only. Not investment advice. Thresholds are starting assumptions.
-  &nbsp;·&nbsp; Shortcuts: <kbd>Space</kbd> play / pause, <kbd>R</kbd> reset, <kbd>1</kbd>–<kbd>4</kbd> pick scenario A–D.
+  <div class="container">
+    <span>Simulation and devnet only. Not investment advice. Thresholds are starting assumptions.</span>
+    <span>Shortcuts: <kbd>Space</kbd> play / pause · <kbd>R</kbd> reset · <kbd>1</kbd>–<kbd>4</kbd> scenario A–D</span>
+  </div>
 </footer>
+
+<!-- Finish summary (toast) -->
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <span class="t-ic" data-icon="check"></span>
+  <div><b id="toastTitle"></b><p id="toastText"></p></div>
+  <button class="icon-btn" id="toastClose" aria-label="Close" data-icon="x"></button>
+</div>
 
 <!-- =====================================================================
      ENGINE (pure logic, no screen code)
@@ -620,9 +867,40 @@ function runScenario(id) {
 </script>
 
 <!-- =====================================================================
-     USER INTERFACE (player loop, cards, chart, alert log)
+     USER INTERFACE (player loop, cards, chart, alert feed, visuals)
      ===================================================================== -->
 <script>
+// ---------- Icons (Lucide shapes, drawn inline so nothing external can break) ----------
+const ICON_PATHS = {
+  play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+  pause: '<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>',
+  reset: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  bellOff: '<path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/>',
+  activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  chart: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',
+  eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  chevron: '<path d="m9 18 6-6-6-6"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  layers: '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
+  timer: '<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
+  repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+  unlink: '<path d="M9 17H7A5 5 0 0 1 7 7"/><path d="M15 7h2a5 5 0 0 1 4 8"/><line x1="8" x2="12" y1="12" y2="12"/><line x1="2" x2="22" y1="2" y2="22"/>',
+};
+function icon(name, size = 18) {
+  return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+         `stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name]}</svg>`;
+}
+function paintIcons(root = document) {
+  root.querySelectorAll('[data-icon]').forEach(el => {
+    el.insertAdjacentHTML('afterbegin', icon(el.dataset.icon, Number(el.dataset.size) || 18));
+    el.removeAttribute('data-icon');
+  });
+}
+
 // ---------- Player state ----------
 const state = {
   scn: null,          // the current scenario definition
@@ -631,10 +909,23 @@ const state = {
   playing: false,
   speed: 60,          // 60× = one simulated minute per real second
   carry: 0,           // fraction of the next reading already "elapsed"
-  lastTs: null,
+  lastTs: 0,
   trackers: {},
   latest: {},         // latest assessment per coin
+  lastLevel: {},      // to animate the status pill when the colour changes
   alerts: [],
+};
+
+// Short labels for the scenario tiles (display only; the engine is unchanged).
+const TILES = {
+  A: { title: 'Calm day', sub: 'Should stay green' },
+  B: { title: 'Flash wick', sub: 'One-minute spike' },
+  C: { title: 'March 2023 replay', sub: 'Stylised USDC depeg' },
+  D: { title: 'Terra-style collapse', sub: 'Supply drains first' },
+};
+const COIN_STYLE = {
+  USDC: { bg: 'linear-gradient(135deg,#2f7bff,#00a1de)', sub: 'SCENARIO TARGET' },
+  USDT: { bg: 'linear-gradient(135deg,#6b7588,#8b95a7)', sub: 'CONTROL · STAYS CALM' },
 };
 
 const $ = id => document.getElementById(id);
@@ -654,20 +945,20 @@ function buildCards() {
   $('cards').innerHTML = COINS.map(c => `
     <article class="coin-card green" id="card-${c.symbol}">
       <div class="coin-top">
-        <span class="coin-name">${c.symbol}</span>
-        ${c.symbol === 'USDC' ? '<span class="target-tag">SCENARIO TARGET</span>' : ''}
+        <span class="coin-logo" style="background:${COIN_STYLE[c.symbol].bg}">${c.symbol}</span>
+        <span><span class="coin-name">${c.symbol}</span><br><span class="coin-sub">${COIN_STYLE[c.symbol].sub}</span></span>
         <span class="pill" id="pill-${c.symbol}">GREEN</span>
       </div>
-      <div class="coin-price num" id="price-${c.symbol}">$1.0000</div>
+      <div class="coin-price" id="price-${c.symbol}">$1.0000</div>
       <div class="coin-reason" id="reason-${c.symbol}">Holding the $1 peg</div>
       <div class="signals">
-        <div class="sig"><i class="dot" id="d-price-${c.symbol}"></i>Price vs $1<span class="val num" id="v-price-${c.symbol}">—</span></div>
-        <div class="sig"><i class="dot" id="d-vol-${c.symbol}"></i>Volatility<span class="val num" id="v-vol-${c.symbol}">—</span></div>
-        <div class="sig"><i class="dot" id="d-sup-${c.symbol}"></i>Supply (last hour)<span class="val num" id="v-sup-${c.symbol}">—</span></div>
+        <div class="sig"><i class="dot" id="d-price-${c.symbol}"></i>Price vs $1<span class="val" id="v-price-${c.symbol}">—</span></div>
+        <div class="sig"><i class="dot" id="d-vol-${c.symbol}"></i>Volatility<span class="val" id="v-vol-${c.symbol}">—</span></div>
+        <div class="sig"><i class="dot" id="d-sup-${c.symbol}"></i>Supply, last hour<span class="val" id="v-sup-${c.symbol}">—</span></div>
       </div>
-      <div class="hold">
-        <span id="hold-${c.symbol}">No warning colour held</span>
-        <div class="hold-bar"><div id="holdbar-${c.symbol}"></div></div>
+      <div class="meter">
+        <div class="meter-text"><span id="hold-${c.symbol}">No warning colour held</span><b>ALERT METER</b></div>
+        <div class="segs" id="segs-${c.symbol}">${'<i></i>'.repeat(CONFIG.RED_HOLD)}</div>
       </div>
     </article>`).join('');
 }
@@ -680,6 +971,11 @@ function renderCards() {
     $('card-' + s).className = 'coin-card ' + cls(a.level);
     const pill = $('pill-' + s);
     pill.className = 'pill ' + cls(a.level);
+    if (state.lastLevel[s] !== undefined && state.lastLevel[s] !== a.level) {   // micro-interaction on change
+      void pill.offsetWidth;
+      pill.classList.add('bump');
+    }
+    state.lastLevel[s] = a.level;
     pill.textContent = LEVELS[a.level];
     $('price-' + s).textContent = '$' + a.price.toFixed(4);
     $('reason-' + s).textContent = a.reason;
@@ -689,35 +985,35 @@ function renderCards() {
     $('v-price-' + s).textContent = fmtPct(a.devPct);
     $('v-vol-' + s).textContent = a.volRatio.toFixed(1) + '× calm';
     $('v-sup-' + s).textContent = fmtPct(a.supplyPct);
+    $('navDot-' + s).className = 'dot ' + cls(a.level);
 
-    // Time-in-colour progress: how close this coin is to logging an alert.
+    // Alert meter: segments fill while a colour holds (3 for amber, 5 for red).
     const tr = state.trackers[s];
-    const bar = $('holdbar-' + s);
-    let text = 'No warning colour held', pct = 0, red = false;
+    let text = 'No warning colour held', need = CONFIG.AMBER_HOLD, filled = 0, tone = '';
     if (tr.redStreak > 0) {
-      red = true;
-      pct = Math.min(1, tr.redStreak / CONFIG.RED_HOLD);
+      need = CONFIG.RED_HOLD; filled = Math.min(need, tr.redStreak); tone = 'on-red';
       text = tr.alerted >= 2 ? `Red held ${tr.redStreak} min · alert logged (R2)`
-                             : `Red held ${tr.redStreak} of ${CONFIG.RED_HOLD} min before alert`;
+                             : `Red held ${tr.redStreak} of ${CONFIG.RED_HOLD} min`;
     } else if (tr.amberStreak > 0) {
-      pct = Math.min(1, tr.amberStreak / CONFIG.AMBER_HOLD);
+      need = CONFIG.AMBER_HOLD; filled = Math.min(need, tr.amberStreak); tone = 'on-amber';
       text = tr.alerted >= 1 ? `Amber held ${tr.amberStreak} min · alert logged (R1)`
-                             : `Amber held ${tr.amberStreak} of ${CONFIG.AMBER_HOLD} min before alert`;
+                             : `Amber held ${tr.amberStreak} of ${CONFIG.AMBER_HOLD} min`;
     } else if (tr.alerted > 0) {
       text = `Green ${tr.greenStreak} of ${CONFIG.CALM_RESET} min to close the episode`;
     }
     $('hold-' + s).textContent = text;
-    bar.style.width = (pct * 100) + '%';
-    bar.className = red ? 'red' : '';
+    [...$('segs-' + s).children].forEach((seg, i) => {
+      seg.className = i >= need ? 'hide' : (i < filled ? tone : '');
+    });
   }
 }
 
-// ---------- Chart (Chart.js) ----------
+// ---------- Chart (Chart.js, dark theme) ----------
 let chart = null;
 const BAND = {
-  green: 'rgba(46,139,87,0.10)',
-  amber: 'rgba(217,140,10,0.16)',
-  red: 'rgba(192,57,43,0.10)',
+  green: 'rgba(43,227,138,0.07)',
+  amber: 'rgba(255,165,31,0.11)',
+  red: 'rgba(255,79,100,0.08)',
 };
 // Draws the shaded rating bands and the dashed $1 line behind the price lines.
 const bandsPlugin = {
@@ -736,25 +1032,41 @@ const bandsPlugin = {
     fill(1 - g, 1 + g, BAND.green);
     fill(1 + g, 1 + r, BAND.amber);
     fill(1 + r, 10, BAND.red);
-    // $1 peg line
-    const py = y.getPixelForValue(1);
-    ctx.strokeStyle = '#14213d'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
+    const py = y.getPixelForValue(1);                       // $1 peg line
+    ctx.strokeStyle = 'rgba(242,244,248,0.45)'; ctx.lineWidth = 1.2; ctx.setLineDash([6, 5]);
     ctx.beginPath(); ctx.moveTo(a.left, py); ctx.lineTo(a.right, py); ctx.stroke();
     ctx.restore();
   },
-  // Phase labels (e.g. "Sat: slide") drawn on top.
+  // Neon glow on the USDC line only.
+  beforeDatasetDraw(ch, args) {
+    ch.ctx.save();
+    if (args.index === 0) { ch.ctx.shadowColor = 'rgba(0,161,222,0.9)'; ch.ctx.shadowBlur = 12; }
+  },
+  afterDatasetDraw(ch) { ch.ctx.restore(); },
+  // Phase labels (e.g. "Sat: slide"): dashed divider + small dark tag along the bottom.
+  // A label is skipped if it would overlap the previous one (narrow screens).
   afterDatasetsDraw(ch) {
     if (!state.scn || !state.scn.phases.length) return;
     const { ctx, chartArea: a, scales: { x } } = ch;
     ctx.save();
-    ctx.font = '600 13px "Segoe UI", system-ui, sans-serif';
-    ctx.fillStyle = '#5b6878';
-    ctx.strokeStyle = 'rgba(20,33,61,0.25)';
-    ctx.setLineDash([3, 4]);
+    ctx.font = '500 12px Poppins, "Segoe UI", sans-serif';
+    let lastRight = -Infinity;
     for (const p of state.scn.phases) {
       const px = x.getPixelForValue(p.at);
-      if (p.at > 0) { ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke(); }
-      ctx.fillText(p.label, px + 6, a.top + 16);
+      if (p.at > 0) {
+        ctx.strokeStyle = 'rgba(177,76,240,0.35)';
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+      }
+      const w = ctx.measureText(p.label).width + 12;
+      const lx = px + 4;
+      if (lx < lastRight + 4 || lx + w > a.right) continue;
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(11,13,18,0.85)';
+      ctx.fillRect(lx, a.bottom - 26, w, 20);
+      ctx.fillStyle = '#c9b3f5';
+      ctx.fillText(p.label, lx + 6, a.bottom - 12);
+      lastRight = lx + w;
     }
     ctx.restore();
   },
@@ -766,12 +1078,14 @@ function initChart() {
     $('chartFallback').style.display = 'flex';
     return;
   }
+  Chart.defaults.font.family = 'Poppins, "Segoe UI", system-ui, sans-serif';
+  Chart.defaults.color = '#9aa3b2';
   chart = new Chart($('chart'), {
     type: 'line',
     data: {
       datasets: [
-        { label: 'USDC', data: [], borderColor: '#2f6fdb', borderWidth: 3, pointRadius: 0, tension: 0 },
-        { label: 'USDT', data: [], borderColor: '#7b8794', borderWidth: 2, pointRadius: 0, tension: 0 },
+        { label: 'USDC', data: [], borderColor: '#00a1de', borderWidth: 3, pointRadius: 0, tension: 0 },
+        { label: 'USDT', data: [], borderColor: '#8b95a7', borderWidth: 2, pointRadius: 0, tension: 0 },
       ],
     },
     options: {
@@ -783,6 +1097,8 @@ function initChart() {
       plugins: {
         legend: { display: false },
         tooltip: {
+          backgroundColor: '#181c25', borderColor: '#323846', borderWidth: 1,
+          titleFont: { family: 'JetBrains Mono, monospace' }, bodyFont: { family: 'JetBrains Mono, monospace' },
           callbacks: {
             title: items => state.scn ? fmtHM(simDate(state.scn, items[0].parsed.x)) + ' UTC' : '',
             label: item => `${item.dataset.label}: $${item.parsed.y.toFixed(4)}`,
@@ -792,13 +1108,13 @@ function initChart() {
       scales: {
         x: {
           type: 'linear', min: 0, max: 119,
-          ticks: { font: { size: 13 }, maxRotation: 0, callback: v => state.scn ? fmtHM(simDate(state.scn, v)) : v },
-          grid: { color: 'rgba(0,0,0,0.05)' },
+          ticks: { font: { size: 12, family: 'JetBrains Mono, monospace' }, maxRotation: 0, includeBounds: false, callback: v => state.scn ? fmtHM(simDate(state.scn, v)) : v },
+          grid: { color: 'rgba(255,255,255,0.04)' }, border: { color: '#252a35' },
         },
         y: {
           min: 0.985, max: 1.005,
-          ticks: { font: { size: 13 }, callback: v => '$' + Number(v).toFixed(3) },
-          grid: { color: 'rgba(0,0,0,0.05)' },
+          ticks: { font: { size: 12, family: 'JetBrains Mono, monospace' }, includeBounds: false, callback: v => '$' + Number(v).toFixed(3) },
+          grid: { color: 'rgba(255,255,255,0.04)' }, border: { color: '#252a35' },
         },
       },
     },
@@ -815,28 +1131,41 @@ function fitYAxis() {
   chart.options.scales.y.max = Math.max(1.005, hi + span * 0.05);
 }
 
-// ---------- Alert log ----------
-function renderLog() {
+// ---------- Alert feed ----------
+function updateAlertCount() {
   $('alertCount').textContent = state.alerts.length === 1 ? '1 alert' : `${state.alerts.length} alerts`;
-  if (!state.alerts.length) {
-    $('log').innerHTML = `<div class="log-empty">No alerts yet. A colour must hold before it counts:
-      amber for ${CONFIG.AMBER_HOLD} simulated minutes, red for ${CONFIG.RED_HOLD}.</div>`;
-    return;
-  }
-  // Newest first
-  $('log').innerHTML = [...state.alerts].reverse().map(e => `
-    <div class="log-item ${e.rating === 'RED' ? 'red' : ''}">
-      <div class="log-head">
-        <span class="log-time num">${fmtHM(e.date)}</span>
-        <b>${e.event}</b>
-        <span>${e.coin}</span>
-        <span class="mini-pill ${e.rating.toLowerCase()}">${e.rating}</span>
-        <span class="rule-tag">${e.rule}</span>
-        <span class="status" title="Blockchain recording arrives in Tier 2">not on-chain</span>
+}
+function resetLog() {
+  updateAlertCount();
+  $('log').innerHTML = `
+    <div class="empty">
+      <span class="empty-ic">${icon('bellOff', 24)}</span>
+      <b>No alerts yet</b>
+      <p>A colour must hold before it counts: amber for ${CONFIG.AMBER_HOLD} simulated minutes, red for ${CONFIG.RED_HOLD}.</p>
+      <button class="btn btn-ghost" data-action="play">${icon('play', 16)}Play scenario</button>
+    </div>`;
+}
+// Newest alert goes on top, with a short entry animation.
+function addLogItem(e) {
+  updateAlertCount();
+  const empty = $('log').querySelector('.empty');
+  if (empty) empty.remove();
+  const tone = e.rating === 'RED' ? 'red' : 'amber';
+  $('log').insertAdjacentHTML('afterbegin', `
+    <div class="alert-item ${tone}">
+      <span class="avatar">${icon('bell', 18)}</span>
+      <div>
+        <div class="alert-head">
+          <b>${e.event}</b><span>${e.coin}</span>
+          <span class="mini-pill ${tone}">${e.rating}</span>
+          <span class="rule">${e.rule}</span>
+          <time>${fmtHM(e.date)}</time>
+        </div>
+        <div class="alert-reason">${e.rating === 'RED' ? 'Red' : 'Amber or worse'} held ${e.held} min · ${e.reason}</div>
+        <div class="memo">${e.memo}</div>
+        <span class="chain" title="Blockchain recording arrives in Tier 2">${icon('unlink', 13)}not on-chain</span>
       </div>
-      <div class="log-reason">${e.rating === 'RED' ? 'Red' : 'Amber or worse'} held ${e.held} min · ${e.reason}</div>
-      <div class="memo">${e.memo}</div>
-    </div>`).join('');
+    </div>`);
 }
 
 // ---------- Player: step, loop, controls ----------
@@ -845,7 +1174,6 @@ function step() {
   if (state.idx >= state.scn.length - 1) return;
   state.idx++;
   const i = state.idx;
-  let newAlert = false;
   COINS.forEach((c, k) => {
     const a = assess(state.data[c.symbol], i);
     state.latest[c.symbol] = a;
@@ -857,18 +1185,20 @@ function step() {
       };
       e.memo = buildMemo(e);
       state.alerts.push(e);
-      newAlert = true;
+      addLogItem(e);
     }
     if (chart) chart.data.datasets[k].data.push({ x: i, y: a.price });
   });
-  if (newAlert) renderLog();
 }
 
 function render() {
   renderCards();
   const d = new Date(simDate(state.scn, Math.max(0, state.idx)).getTime() + state.carry * 60000);
   $('clock').textContent = fmtClock(d, state.speed < 60 && state.playing);
-  $('progress').style.width = ((state.idx + 1) / state.scn.length * 100) + '%';
+  $('navClock').textContent = fmtHM(d);
+  const pct = (state.idx + 1) / state.scn.length * 100;
+  $('progress').style.width = pct + '%';
+  $('progressPct').textContent = Math.round(pct) + '%';
   if (chart) { fitYAxis(); chart.update('none'); }
 }
 
@@ -886,53 +1216,66 @@ function tick() {
   render();
 }
 
+function setPlayButtons(on) {
+  $('playBtn').innerHTML = icon(on ? 'pause' : 'play', 18) + (on ? 'Pause' : 'Play');
+  $('navPlay').innerHTML = icon(on ? 'pause' : 'play', 16);
+  $('navPlay').setAttribute('aria-label', on ? 'Pause' : 'Play');
+}
+
 function setPlaying(on) {
   if (on && state.idx >= state.scn.length - 1) reset();      // pressing Play at the end restarts
   state.playing = on;
   state.lastTs = performance.now();
-  $('playBtn').textContent = on ? '❚❚ Pause' : '▶ Play';
+  setPlayButtons(on);
   clearInterval(timer);
-  if (on) timer = setInterval(tick, 50);
+  if (on) { hideToast(); timer = setInterval(tick, 50); }
   else render();
 }
 
 function finish() {
   state.playing = false;
   clearInterval(timer);
-  $('playBtn').textContent = '▶ Play';
+  setPlayButtons(false);
   const n = state.alerts.length;
-  let msg = `Scenario finished · ${n} alert${n === 1 ? '' : 's'} logged.`;
-  if (state.scn.id === 'B') msg += ' The red flicker never held long enough, so the time-in-colour rule filtered it out.';
+  let msg = `${n} alert${n === 1 ? '' : 's'} logged.`;
   if (state.scn.id === 'A') msg += ' No false alarms on a calm day.';
+  if (state.scn.id === 'B') msg += ' The red flicker never held long enough, so the time-in-colour rule filtered it out.';
   if (state.scn.id === 'C') msg += ' USDC went amber, then red, then recovered to green.';
   if (state.scn.id === 'D') msg += ' The supply signal raised the alarm before the price moved.';
-  $('finish').textContent = msg;
-  $('finish').style.display = 'block';
+  showToast(`Scenario ${state.scn.id} finished`, msg);
 }
+
+function showToast(title, text) {
+  $('toastTitle').textContent = title;
+  $('toastText').textContent = text;
+  $('toast').classList.add('show');
+}
+function hideToast() { $('toast').classList.remove('show'); }
 
 function reset() {
   state.playing = false;
   clearInterval(timer);
-  $('playBtn').textContent = '▶ Play';
-  $('finish').style.display = 'none';
+  setPlayButtons(false);
+  hideToast();
   state.data = generateScenario(state.scn, CONFIG.SEED + state.scn.id.charCodeAt(0));
   state.idx = -1;
   state.carry = 0;
   state.alerts = [];
   state.latest = {};
+  state.lastLevel = {};
   COINS.forEach(c => { state.trackers[c.symbol] = createTracker(); });
   if (chart) {
     chart.data.datasets.forEach(ds => { ds.data = []; });
     chart.options.scales.x.max = state.scn.length - 1;
   }
+  resetLog();
   step();                 // show the first reading straight away
-  renderLog();
   render();
 }
 
 function loadScenario(id) {
   state.scn = SCENARIOS[id];
-  $('scenario').value = id;
+  document.querySelectorAll('.tile').forEach(t => t.classList.toggle('active', t.dataset.scn === id));
   $('scnDesc').textContent = state.scn.desc;
   $('scnExpect').textContent = state.scn.expect;
   $('scnStylised').textContent = state.scn.stylised || '';
@@ -944,23 +1287,97 @@ function setSpeed(s) {
   document.querySelectorAll('#speed button').forEach(b => b.classList.toggle('active', Number(b.dataset.speed) === s));
 }
 
+// ---------- Background particles (subtle, paused when hidden or reduced motion) ----------
+function startParticles() {
+  const canvas = $('particles');
+  if (!canvas || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const ctx = canvas.getContext('2d');
+  const colors = ['0,161,222', '177,76,240', '63,224,232'];
+  const rng = makeRng(7);                     // seeded, so the pattern is the same every run
+  let w = 0, h = 0, dots = [];
+  function size() {
+    const r = canvas.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    w = r.width; h = r.height;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!dots.length) {
+      dots = Array.from({ length: 46 }, () => ({
+        x: rng() * w, y: rng() * h, vx: (rng() - 0.5) * 0.25, vy: (rng() - 0.5) * 0.25,
+        r: 1 + rng() * 1.6, c: colors[Math.floor(rng() * colors.length)],
+      }));
+    }
+  }
+  function draw() {
+    if (!document.hidden) {
+      ctx.clearRect(0, 0, w, h);
+      for (const p of dots) {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > w) p.vx *= -1;
+        if (p.y < 0 || p.y > h) p.vy *= -1;
+      }
+      for (let i = 0; i < dots.length; i++) {
+        for (let j = i + 1; j < dots.length; j++) {
+          const a = dots[i], b = dots[j], d = Math.hypot(a.x - b.x, a.y - b.y);
+          if (d < 130) {
+            ctx.strokeStyle = `rgba(${a.c},${0.14 * (1 - d / 130)})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+          }
+        }
+      }
+      for (const p of dots) {
+        ctx.fillStyle = `rgba(${p.c},0.7)`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  size();
+  window.addEventListener('resize', size);
+  requestAnimationFrame(draw);
+}
+
+// ---------- Nav: highlight the section in view ----------
+function startScrollSpy() {
+  const links = document.querySelectorAll('.nav-links a');
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if (en.isIntersecting) links.forEach(l => l.classList.toggle('active', l.dataset.spy === en.target.id));
+    });
+  }, { rootMargin: '-45% 0px -50% 0px' });
+  ['top', 'board', 'method'].forEach(id => obs.observe($(id)));
+}
+
 // ---------- Wire up the page ----------
-$('scenario').innerHTML = Object.values(SCENARIOS).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-$('scenario').addEventListener('change', e => loadScenario(e.target.value));
+$('tiles').innerHTML = Object.values(SCENARIOS).map(s => `
+  <button class="tile" data-scn="${s.id}">
+    <span class="letter">${s.id}</span>
+    <span><b>${TILES[s.id].title}</b><small>${TILES[s.id].sub}</small></span>
+  </button>`).join('');
+document.querySelectorAll('.tile').forEach(t => t.addEventListener('click', () => loadScenario(t.dataset.scn)));
 $('playBtn').addEventListener('click', () => setPlaying(!state.playing));
+$('navPlay').addEventListener('click', () => setPlaying(!state.playing));
 $('resetBtn').addEventListener('click', reset);
+$('toastClose').addEventListener('click', hideToast);
+$('log').addEventListener('click', e => { if (e.target.closest('[data-action="play"]')) setPlaying(true); });
 document.querySelectorAll('#speed button').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
+// After a mouse click, drop focus from the button so Space goes to the play/pause shortcut.
+document.addEventListener('pointerup', e => { const b = e.target.closest('button'); if (b) b.blur(); });
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'SELECT') return;
+  if (e.target.closest('button, input, select, textarea')) return;   // let the focused control handle keys
   if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); }
   else if (e.key === 'r' || e.key === 'R') reset();
   else if (['1', '2', '3', '4'].includes(e.key)) loadScenario('ABCD'[Number(e.key) - 1]);
 });
 
+paintIcons();
 buildCards();
 initChart();
 setSpeed(60);
 loadScenario('C');       // open on the main demo scenario
+startParticles();
+startScrollSpy();
 </script>
 </body>
 </html>
