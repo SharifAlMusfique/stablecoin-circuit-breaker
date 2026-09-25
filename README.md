@@ -43,7 +43,7 @@ Detecting a depeg is already well served. Open-source monitors, commercial risk 
 | 1. Must have | Scenario player, rating cards, chart with bands, time-in-colour rule, alert log, method panel | **Done.** All four scenarios pass the automated tests. |
 | 2. Solid | Connect Phantom (devnet), a memo transaction per alert, Auditor view with Explorer links | **Built.** Devnet proof links: see [Proof on Solana](#proof-on-solana). |
 | 3. Differentiator | Policy panel R1 to R3, approval card, one Phantom-signed transaction with an SPL transfer and memos | **Built.** Devnet proof links: see [Proof on Solana](#proof-on-solana). |
-| 4. Stretch | Live Pyth prices, CSV export of the Auditor view, real March 2023 history | Not started |
+| 4. Stretch | Live Pyth prices, CSV export of the Auditor view, real March 2023 history | **Built.** CSV export and the real-history replay work with no setup. Live prices need your own Pyth API key (see [Live prices](#live-prices-tier-4)). |
 
 ---
 
@@ -104,13 +104,27 @@ Then:
 5. Click **View on Explorer** to show the public record. Then click **Resume simulation** to watch the recovery.
 6. Open the **Auditor view** tab: flagged → proposed → approved → moved, each with its link.
 
-Keyboard shortcuts: `Space` play / pause, `R` reset, `1` to `4` pick scenario A to D.
+Keyboard shortcuts: `Space` play / pause, `R` reset, `1` to `5` pick scenario A to E.
+
+### Live prices (Tier 4)
+
+Switch the scenario player from **Simulation** to **Live prices · Pyth** to rate the *real* USDC and USDT prices right now.
+
+1. Pyth has required an API key for price data since 26 August 2026. Get one via [Pyth's guide](https://docs.pyth.network/price-feeds/core/upgrade/preparing): sign-up needed; a free trial is included, then paid plans.
+2. Paste the key into the **Pyth API key** box and click **Save key**. It is saved in your browser only, never in this repo. Use **Forget key** to remove it, and don't save it on a shared computer.
+3. Prices refresh every 5 seconds, and the risk engine takes one reading per minute, like the scenarios. On a normal day, **all green is the expected result**.
+
+Live mode is **detect only**: it rates and logs alerts, but writes nothing on-chain and proposes no treasury action. The supply signal shows "n/a", because real supply data would need Solana mainnet, and this app never touches mainnet.
+
+### Export the audit trail (Tier 4)
+
+In the **Auditor view** tab, click **Export CSV**. It downloads every event with its simulated time, scenario, rating, rule, plain-English description, memo, signer, status and Explorer link. The file opens in Excel or Google Sheets.
 
 ---
 
 ## Scenarios
 
-The demo runs on four built-in scenarios generated with a **fixed random seed**, so every run looks the same on stage. One reading per simulated minute. Only USDC (the target) moves; USDT stays calm for contrast. Speed: 60× = one simulated minute per real second.
+The demo runs on four built-in scenarios generated with a **fixed random seed**, so every run looks the same on stage, plus one replay of real prices. One reading per simulated minute. Only USDC (the target) moves; USDT stays calm for contrast. Speed: 60× = one simulated minute per real second; 600× = ten.
 
 | ID | Name | What happens | Expected result |
 |---|---|---|---|
@@ -118,8 +132,14 @@ The demo runs on four built-in scenarios generated with a **fixed random seed**,
 | B | Flash wick | USDC drops 1.5% for a single minute, then snaps back | A red flicker on screen, **no alert, no proposal** |
 | C | March 2023 USDC replay (stylised) | Friday calm → Saturday slide to ~$0.87 → Sunday ~$0.90 to 0.95 → Monday recovery | Amber alert → red alert → R2 proposal → decision → back to green |
 | D | Collapse (Terra-style) | Supply drains 5% in an hour while the price looks fine, then the price slides to ~$0.30 and never recovers | The supply signal fires the alerts **before** the price moves |
+| E | March 2023 USDC (real history) | Real 1-minute USDC/USD prices from Bitstamp, Fri 10 Mar 22:00 → Mon 13 Mar 16:00 UTC (3,960 minutes). Best at 600×, about 6.5 minutes. | Amber Fri 23:13 → red and R2 proposal Sat 01:31 → calm → amber Sat 03:53 → red and R2 proposal Sat 04:37 → green by Monday afternoon |
 
 Scenario C is a **stylised shape of the March 2023 event, not exact historical data**, and it is time-compressed into 110 simulated minutes.
+
+Scenario E is **real data** from one exchange. It is downloaded from Bitstamp's public API the first time you pick it (internet needed), then kept in your browser. No exchange data is stored in this repo.
+- **Deeper than the market-wide low:** Bitstamp's low was **$0.81**, lower than the widely reported ~$0.87, because a single venue can dip further than the market average.
+- **USDC only:** USDT is still the simulated calm line, since real USDT traded at a premium that weekend and would distract from the USDC story.
+- **No supply signal:** supply is not available for this replay.
 
 ## Method (starting assumptions)
 
@@ -131,7 +151,7 @@ Scenario C is a **stylised shape of the March 2023 event, not exact historical d
 
 - **Overall rating = the worst signal.** If any light is red, the coin is red.
 - **Time-in-colour rule:** lights change instantly, but an alert is logged only when amber (or worse) holds for 3 simulated minutes, or red holds for 5.
-- **One alert per episode:** each level alerts once; the episode ends after 5 green minutes.
+- **One alert per episode:** each level alerts once; the episode ends after 60 green minutes. We first used 5, but on the real March 2023 data that re-alerted on every wobble around the amber line (8 alerts); 60 gives one alert per real episode (4 alerts).
 
 ### Default treasury policy (editable in the app)
 
@@ -223,7 +243,9 @@ Manual checklist: Approve moves tokens and the balances update; Reject moves not
 - **No prediction.** It flags stress with rules anyone can check. Depegs are rare and often driven by confidence shocks.
 - **Thresholds are starting assumptions.** They are slightly more cautious than the 0.5 to 1% bands common in existing tools, and would need calibrating against past events.
 - **The policy is enforced by the app, not by the chain.** The chain records and executes what the app proposes and a human signs.
+- **Live mode is detect only** and needs a paid-after-trial Pyth API key. Real-history data comes from a single exchange.
+- **Long runs can false-alarm on noise.** Over the 66-hour replay, pure random noise on a calm line briefly reached 2× volatility, so the thresholds need calibrating before any real use.
 
 ## Next step
 
-**Enforce the policy on-chain.** A Solana program would hold the treasury funds and only release a move when the rule conditions and the named approver's signature are both met. The rules would then be guaranteed by the chain, not just recorded on it. After that: live Pyth price feeds, CSV export for auditors, and thresholds calibrated on real events.
+**Enforce the policy on-chain.** A Solana program would hold the treasury funds and only release a move when the rule conditions and the named approver's signature are both met. The rules would then be guaranteed by the chain, not just recorded on it. After that: calibrate the thresholds on more real events, add a supply feed, and let live mode propose actions once it is trusted.
