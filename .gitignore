@@ -1,0 +1,16 @@
+# Never commit wallet keypairs, seed phrases or private keys
+*.json
+!package.json
+!package-lock.json
+*keypair*
+*.key
+.env
+.env.*
+
+# Dependencies / build output (if we move to Vite later)
+node_modules/
+dist/
+
+# Local copies of old versions (git history now keeps every version) and local tool settings
+backup/
+.claude/

@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stablecoin Circuit Breaker</title>
+<!-- Chart.js from a CDN. If it fails to load (no internet), the app still runs without the chart. -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  /* =========================================================
+     DESIGN TOKENS — taken from the Project Brief PDF
+     (navy header, teal accents, traffic-light colours)
+     ========================================================= */
+  :root {
+    --navy: #14213d;
+    --navy-2: #1d2d50;
+    --teal: #137a80;
+    --teal-soft: #e3f1f1;
+    --green: #2e8b57;
+    --amber: #d98c0a;
+    --red: #c0392b;
+    --green-bg: #e8f4ed;
+    --amber-bg: #fdf3e1;
+    --red-bg: #fbe9e7;
+    --grey-bg: #eef3f6;
+    --line: #cbd5dd;
+    --text: #1b2433;
+    --muted: #5b6878;
+    --page: #f5f7f9;
+    --card: #ffffff;
+    --usdc: #2f6fdb;
+    --usdt: #7b8794;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html { font-size: 17px; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text);
+    font-family: "Segoe UI", "DejaVu Sans", system-ui, -apple-system, Roboto, sans-serif;
+    line-height: 1.4;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---------- Header ---------- */
+  header {
+    background: var(--navy);
+    color: #fff;
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .lights { display: flex; flex-direction: column; gap: 5px; }
+  .lights span { width: 16px; height: 16px; border-radius: 50%; display: block; }
+  .brand h1 { margin: 0; font-size: 1.9rem; letter-spacing: -0.01em; line-height: 1.1; }
+  .brand p { margin: 3px 0 0; color: #a9d6d8; font-size: 0.95rem; font-weight: 600; letter-spacing: 0.04em; }
+  .badges { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; }
+  .badge {
+    font-weight: 800; letter-spacing: 0.12em; font-size: 0.85rem;
+    padding: 7px 14px; border-radius: 6px; border: 2px solid;
+  }
+  .badge.sim { background: var(--amber); border-color: var(--amber); color: #1b1300; }
+  .badge.devnet { border-color: #a9d6d8; color: #a9d6d8; }
+
+  .sim-banner {
+    background: #fff4dc;
+    border-bottom: 1px solid #efd9a7;
+    color: #5a3d00;
+    padding: 8px 28px;
+    font-size: 0.9rem;
+  }
+  .sim-banner strong { letter-spacing: 0.08em; }
+
+  main { padding: 20px 28px 40px; max-width: 1600px; margin: 0 auto; }
+
+  /* ---------- Panels ---------- */
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .panel h2 {
+    margin: 0 0 12px;
+    font-size: 1.15rem;
+    color: var(--teal);
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .panel h2 small { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
+
+  /* ---------- Controls bar ---------- */
+  .controls {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .controls label { font-weight: 600; color: var(--muted); font-size: 0.9rem; }
+  select, button {
+    font: inherit;
+    font-size: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    padding: 9px 14px;
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+  }
+  select { min-width: 300px; font-weight: 600; }
+  button:hover { border-color: var(--teal); }
+  button:focus-visible, select:focus-visible { outline: 3px solid #9fd3d6; outline-offset: 1px; }
+  button.primary { background: var(--teal); border-color: var(--teal); color: #fff; font-weight: 700; min-width: 110px; }
+  button.primary:hover { background: #0f666b; }
+  .speed { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .speed button { border: 0; border-radius: 0; padding: 9px 14px; border-right: 1px solid var(--line); }
+  .speed button:last-child { border-right: 0; }
+  .speed button.active { background: var(--navy); color: #fff; font-weight: 700; }
+  .clock {
+    margin-left: auto; text-align: right;
+  }
+  .clock .label { font-size: 0.75rem; letter-spacing: 0.1em; color: var(--muted); font-weight: 700; }
+  .clock .value { font-size: 1.35rem; font-weight: 700; }
+  .progress { height: 6px; background: var(--grey-bg); border-radius: 3px; overflow: hidden; margin-top: 10px; }
+  .progress div { height: 100%; width: 0; background: var(--teal); transition: width 0.15s linear; }
+  .scn-note { margin-top: 10px; color: var(--muted); font-size: 0.95rem; display: flex; gap: 16px; flex-wrap: wrap; }
+  .scn-note .expect { color: var(--text); }
+  .stylised { font-style: italic; color: #7a5300; }
+  .finish {
+    margin-top: 10px; padding: 10px 14px; border-radius: 8px;
+    background: var(--teal-soft); border: 1px solid #b5dcdd; font-weight: 600; display: none;
+  }
+
+  /* ---------- Layout grid ---------- */
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr);
+    gap: 18px;
+    margin-top: 18px;
+  }
+  .left { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+
+  /* ---------- Rating cards ---------- */
+  .coin-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 10px solid var(--green);
+    border-radius: 10px;
+    padding: 16px 18px;
+    transition: background-color 0.15s, border-color 0.15s;
+  }
+  .coin-card.green { border-left-color: var(--green); background: var(--green-bg); }
+  .coin-card.amber { border-left-color: var(--amber); background: var(--amber-bg); }
+  .coin-card.red   { border-left-color: var(--red);   background: var(--red-bg); }
+  .coin-top { display: flex; align-items: center; gap: 10px; }
+  .coin-name { font-size: 1.5rem; font-weight: 800; }
+  .target-tag {
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; background: #fff;
+  }
+  .pill {
+    margin-left: auto; font-weight: 800; letter-spacing: 0.1em; font-size: 1.05rem;
+    color: #fff; padding: 6px 16px; border-radius: 999px; background: var(--green);
+  }
+  .pill.amber { background: var(--amber); color: #1b1300; }
+  .pill.red { background: var(--red); }
+  .coin-price { font-size: 2.8rem; font-weight: 800; margin: 6px 0 0; line-height: 1.1; }
+  .coin-reason { font-size: 1.2rem; font-weight: 600; margin: 4px 0 12px; min-height: 1.7em; }
+  .signals { border-top: 1px solid rgba(0,0,0,0.08); padding-top: 10px; display: grid; gap: 5px; }
+  .sig { display: flex; align-items: center; gap: 9px; font-size: 0.98rem; }
+  .sig .dot { width: 13px; height: 13px; border-radius: 50%; background: var(--green); flex: none; }
+  .sig .dot.amber { background: var(--amber); }
+  .sig .dot.red { background: var(--red); }
+  .sig .val { margin-left: auto; font-weight: 700; }
+  .hold { margin-top: 12px; font-size: 0.9rem; color: var(--muted); }
+  .hold-bar { height: 8px; background: rgba(0,0,0,0.08); border-radius: 4px; overflow: hidden; margin-top: 5px; }
+  .hold-bar div { height: 100%; width: 0; background: var(--amber); transition: width 0.15s; }
+  .hold-bar div.red { background: var(--red); }
+
+  /* ---------- Chart ---------- */
+  .chart-wrap { position: relative; height: 360px; }
+  .chart-fallback {
+    display: none; height: 100%; align-items: center; justify-content: center;
+    color: var(--muted); text-align: center; background: var(--grey-bg); border-radius: 8px; padding: 20px;
+  }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; font-size: 0.88rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 22px; height: 12px; border-radius: 3px; display: inline-block; }
+  .sw.line { height: 4px; }
+
+  /* ---------- Alert log ---------- */
+  .log-panel { display: flex; flex-direction: column; min-height: 0; }
+  .log-list { overflow-y: auto; max-height: 820px; display: flex; flex-direction: column; gap: 10px; }
+  .log-empty { color: var(--muted); background: var(--grey-bg); border-radius: 8px; padding: 14px; }
+  .log-item {
+    border: 1px solid var(--line); border-left: 6px solid var(--amber);
+    border-radius: 8px; padding: 10px 12px; background: #fff;
+    animation: pop 0.35s ease-out;
+  }
+  .log-item.red { border-left-color: var(--red); }
+  @keyframes pop { from { transform: translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .log-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .log-time { font-weight: 700; }
+  .mini-pill { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 999px; color: #fff; }
+  .mini-pill.amber { background: var(--amber); color: #1b1300; }
+  .mini-pill.red { background: var(--red); }
+  .rule-tag { font-size: 0.78rem; font-weight: 700; color: var(--teal); border: 1px solid #b5dcdd; border-radius: 4px; padding: 1px 6px; }
+  .status { margin-left: auto; font-size: 0.78rem; color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 1px 6px; }
+  .log-reason { margin: 5px 0 6px; font-size: 0.98rem; }
+  .memo { font-family: var(--mono); font-size: 0.74rem; color: var(--muted); background: var(--grey-bg); border-radius: 5px; padding: 5px 7px; word-break: break-all; }
+
+  /* ---------- Method panel ---------- */
+  .method { margin-top: 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  th { background: var(--navy); color: #fff; text-align: left; padding: 9px 10px; font-weight: 700; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:nth-child(even) td { background: #f3f6f8; }
+  td.g { color: var(--green); font-weight: 700; }
+  td.a { color: #a86a00; font-weight: 700; }
+  td.r { color: var(--red); font-weight: 700; }
+  .method-notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 16px; }
+  .note { background: var(--grey-bg); border-left: 4px solid var(--teal); border-radius: 6px; padding: 10px 14px; font-size: 0.93rem; }
+  .note b { display: block; margin-bottom: 3px; }
+  .assume { font-size: 0.78rem; font-weight: 800; letter-spacing: 0.08em; color: #7a5300; background: #fff4dc; border: 1px solid #efd9a7; border-radius: 4px; padding: 2px 8px; }
+  footer { text-align: center; color: var(--muted); font-size: 0.85rem; padding: 10px 28px 30px; }
+  kbd { font-family: var(--mono); font-size: 0.8rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: #fff; }
+
+  /* ---------- Smaller screens ---------- */
+  @media (max-width: 1100px) {
+    .grid { grid-template-columns: 1fr; }
+    .log-list { max-height: 480px; }
+  }
+  @media (max-width: 700px) {
+    html { font-size: 15px; }
+    header, main, .sim-banner { padding-left: 16px; padding-right: 16px; }
+    .cards { grid-template-columns: 1fr; }
+    select { min-width: 0; width: 100%; }
+    .clock { margin-left: 0; text-align: left; }
+    .chart-wrap { height: 280px; }
+    .method-scroll { overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 1. HEADER: product name + SIMULATION and DEVNET badges -->
+<header>
+  <div class="lights" aria-hidden="true">
+    <span style="background:var(--green)"></span>
+    <span style="background:var(--amber)"></span>
+    <span style="background:var(--red)"></span>
+  </div>
+  <div class="brand">
+    <h1>Stablecoin Circuit Breaker</h1>
+    <p>DETECT → RESPOND → PROVE</p>
+  </div>
+  <div class="badges">
+    <span class="badge sim">SIMULATION</span>
+    <span class="badge devnet" title="Solana devnet only. Blockchain steps arrive in Tier 2.">DEVNET</span>
+  </div>
+</header>
+<div class="sim-banner">
+  <strong>SIMULATION</strong> · Prices come from a scripted scenario, not live market data.
+  Thresholds are starting assumptions. Flags stress; does not predict depegs. Not investment advice.
+</div>
+
+<main>
+  <!-- 2. CONTROLS BAR -->
+  <section class="panel" aria-label="Scenario controls">
+    <div class="controls">
+      <label for="scenario">Scenario</label>
+      <select id="scenario"></select>
+      <button id="playBtn" class="primary">▶ Play</button>
+      <button id="resetBtn">↺ Reset</button>
+      <label>Speed</label>
+      <div class="speed" id="speed">
+        <button data-speed="1">1×</button>
+        <button data-speed="10">10×</button>
+        <button data-speed="60" class="active">60×</button>
+      </div>
+      <div class="clock">
+        <div class="label">SIMULATED TIME</div>
+        <div class="value num" id="clock">—</div>
+      </div>
+    </div>
+    <div class="progress"><div id="progress"></div></div>
+    <div class="scn-note">
+      <span id="scnDesc"></span>
+      <span class="expect" id="scnExpect"></span>
+    </div>
+    <div class="scn-note"><span class="stylised" id="scnStylised"></span></div>
+    <div class="finish" id="finish"></div>
+  </section>
+
+  <div class="grid">
+    <div class="left">
+      <!-- 3. RATING CARDS (one per coin, built by JavaScript) -->
+      <section class="cards" id="cards" aria-label="Rating cards"></section>
+
+      <!-- 4. PRICE CHART with green / amber / red bands -->
+      <section class="panel">
+        <h2>Price vs $1 <small>shaded bands show the rating zones</small></h2>
+        <div class="chart-wrap">
+          <canvas id="chart" aria-label="Price chart"></canvas>
+          <div class="chart-fallback" id="chartFallback">
+            Chart could not load (Chart.js needs an internet connection).<br>
+            The simulation, rating cards and alert log still work.
+          </div>
+        </div>
+        <div class="legend">
+          <span><i class="sw line" style="background:var(--usdc)"></i>USDC</span>
+          <span><i class="sw line" style="background:var(--usdt)"></i>USDT</span>
+          <span><i class="sw line" style="background:#14213d"></i>$1 peg</span>
+          <span><i class="sw" style="background:rgba(46,139,87,.22)"></i>Green: within 0.3%</span>
+          <span><i class="sw" style="background:rgba(217,140,10,.28)"></i>Amber: 0.3–1%</span>
+          <span><i class="sw" style="background:rgba(192,57,43,.22)"></i>Red: more than 1%</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- 6. ALERT LOG -->
+    <section class="panel log-panel" aria-label="Alert log">
+      <h2>Alert log <small id="alertCount">0 alerts</small></h2>
+      <div class="log-list" id="log"></div>
+    </section>
+  </div>
+
+  <!-- 8. METHOD PANEL: thresholds shown as starting assumptions -->
+  <section class="panel method">
+    <h2>Method <span class="assume">STARTING ASSUMPTIONS</span></h2>
+    <div class="method-scroll">
+    <table>
+      <thead>
+        <tr><th>Signal</th><th>How it is calculated</th><th>Green</th><th>Amber</th><th>Red</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Price deviation</b></td>
+          <td>|price − 1| × 100, in %</td>
+          <td class="g">&lt; 0.3%</td><td class="a">0.3% – 1%</td><td class="r">&gt; 1%</td>
+        </tr>
+        <tr>
+          <td><b>Volatility</b></td>
+          <td>Standard deviation of the minute-to-minute price moves across the last 15 readings,
+              compared with the coin's calm level. The 2 most extreme moves are left out, so a single spike does not count as volatility.</td>
+          <td class="g">&lt; 2×</td><td class="a">2× – 4×</td><td class="r">&gt; 4×</td>
+        </tr>
+        <tr>
+          <td><b>Supply change</b></td>
+          <td>% change in circulating supply over the last 60 readings (one hour)</td>
+          <td class="g">&lt; 1%</td><td class="a">1% – 3%</td><td class="r">&gt; 3%</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="method-notes">
+      <div class="note"><b>Overall rating = the worst signal</b>If any one warning light is red, the coin is red. Conservative, and easy to explain.</div>
+      <div class="note"><b>Time-in-colour rule</b>Lights change instantly. An <em>alert</em> is logged only when amber (or worse) holds for 3 simulated minutes (rule R1), or red holds for 5 (rule R2).</div>
+      <div class="note"><b>One alert per episode</b>Each level alerts once. The episode ends when the coin has been green again for 5 simulated minutes.</div>
+      <div class="note"><b>Honest limits</b>Simulated data only. One reading per simulated minute. It flags stress; it does not predict depegs. Thresholds would be calibrated against past events.</div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Simulation and devnet only. Not investment advice. Thresholds are starting assumptions.
+  &nbsp;·&nbsp; Shortcuts: <kbd>Space</kbd> play / pause, <kbd>R</kbd> reset, <kbd>1</kbd>–<kbd>4</kbd> pick scenario A–D.
+</footer>
+
+<!-- =====================================================================
+     ENGINE (pure logic, no screen code)
+     1. Settings  2. Seeded random numbers  3. Scenario data
+     4. Risk engine  5. Time-in-colour alert rule  6. Memo text
+     ===================================================================== -->
+<script id="engine">
+// ---------- 1. SETTINGS (all thresholds are starting assumptions) ----------
+const CONFIG = {
+  SEED: 20230311,          // fixed seed: every run looks exactly the same on stage
+  CALM_NOISE: 0.0002,      // calm price noise: about ±0.02% around $1
+  PRICE_AMBER: 0.3,        // % away from $1
+  PRICE_RED: 1.0,
+  VOL_WINDOW: 15,          // readings
+  VOL_TRIM: 2,             // ignore the 2 most extreme minute moves (filters one-off spikes)
+  VOL_AMBER: 2,            // × calm level
+  VOL_RED: 4,
+  SUPPLY_WINDOW: 60,       // readings (one simulated hour)
+  SUPPLY_AMBER: 1,         // % change
+  SUPPLY_RED: 3,
+  AMBER_HOLD: 3,           // simulated minutes amber (or worse) before an alert (R1)
+  RED_HOLD: 5,             // simulated minutes red before an alert (R2)
+  CALM_RESET: 5,           // simulated minutes green before a new alert episode can start
+};
+
+const COINS = [
+  { symbol: 'USDC', supply: 43.5e9 },
+  { symbol: 'USDT', supply: 73.0e9 },
+];
+
+const LEVELS = ['GREEN', 'AMBER', 'RED'];
+
+// ---------- 2. SEEDED RANDOM NUMBERS ----------
+// mulberry32: a tiny random generator that always gives the same numbers for the same seed.
+function makeRng(seed) {
+  let s = seed >>> 0;
+  return function () {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Bell-curve random number (mean 0, spread 1).
+function gaussian(rng) {
+  let u = 0;
+  while (u === 0) u = rng();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rng());
+}
+// Straight-line interpolation between keyframes [[minute, value], ...].
+function interp(keys, t) {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) {
+    const [t1, v1] = keys[i];
+    if (t <= t1) {
+      const [t0, v0] = keys[i - 1];
+      return v0 + (v1 - v0) * (t - t0) / (t1 - t0);
+    }
+  }
+  return keys[keys.length - 1][1];
+}
+
+// ---------- 3. SCENARIOS ----------
+// Each scenario only moves the TARGET coin (USDC). USDT stays calm for contrast.
+// price: keyframes of the price path. noise: multiplier on calm noise. supply: % change from start.
+const SCENARIOS = {
+  A: {
+    id: 'A', name: 'A · Calm day', length: 120, start: '2026-09-26T09:00',
+    desc: 'USDC and USDT sit at $1 with ±0.02% noise for 2 hours.',
+    expect: 'Expected: all green, no alerts.',
+    price: [[0, 1]], noise: [[0, 1]], supply: [[0, 0]],
+    phases: [],
+  },
+  B: {
+    id: 'B', name: 'B · Flash wick', length: 120, start: '2026-09-26T13:00',
+    desc: 'Calm, then USDC drops 1.5% for under a minute and snaps back.',
+    expect: 'Expected: a red flicker on screen, but no alert. (Tip: watch at 1× or 10×.)',
+    price: [[0, 1]], noise: [[0, 1]], supply: [[0, 0]],
+    spikes: { 60: 0.985 },   // one single reading at $0.985
+    phases: [{ at: 60, label: 'Flash wick' }],
+  },
+  C: {
+    id: 'C', name: 'C · March 2023 USDC replay (stylised)', length: 110, start: '2023-03-10T22:00',
+    desc: 'Friday calm → Saturday slide to ~$0.87 → Sunday ~$0.90–0.95 → Monday recovery to ~$0.99 and back to the peg.',
+    expect: 'Expected: amber alert → red alert → back to green.',
+    stylised: 'Stylised shape of the March 2023 event, not exact historical data. Time-compressed: the weekend is squeezed into 110 simulated minutes.',
+    price: [[0, 1], [11, 1], [24, 0.994], [30, 0.95], [37, 0.872], [42, 0.88], [47, 0.905],
+            [52, 0.935], [56, 0.915], [61, 0.945], [66, 0.95], [72, 0.99], [79, 0.9985], [110, 0.9988]],
+    noise: [[0, 1], [11, 1], [14, 1.3], [24, 1.5], [27, 6], [37, 10], [52, 8], [66, 6], [72, 3], [77, 1], [110, 1]],
+    supply: [[0, 0], [110, -0.6]],
+    phases: [{ at: 0, label: 'Fri: calm' }, { at: 12, label: 'Sat: slide' }, { at: 45, label: 'Sun: choppy' }, { at: 66, label: 'Mon: recovery' }],
+  },
+  D: {
+    id: 'D', name: 'D · Collapse (Terra-style)', length: 160, start: '2026-09-26T15:00',
+    desc: 'Supply drains 5% in an hour while price still looks fine. Then price slides, accelerates to ~$0.30 and never recovers.',
+    expect: 'Expected: supply signal turns red before price; the alert fires early.',
+    price: [[0, 1], [75, 0.999], [95, 0.985], [110, 0.93], [122, 0.75], [132, 0.45], [140, 0.30], [160, 0.29]],
+    noise: [[0, 1], [75, 1.2], [95, 4], [110, 15], [140, 40], [160, 30]],
+    supply: [[0, 0], [15, 0], [75, -5], [110, -9], [140, -25], [160, -30]],
+    phases: [{ at: 0, label: 'Calm' }, { at: 15, label: 'Supply drains' }, { at: 75, label: 'Price collapses' }],
+  },
+};
+
+// Build the full list of readings for every coin in one scenario.
+function generateScenario(scn, seed) {
+  const rng = makeRng(seed);
+  const data = {};
+  for (const coin of COINS) {
+    const rows = [];
+    let supplyWobble = 1;
+    const isTarget = coin.symbol === 'USDC';
+    for (let t = 0; t < scn.length; t++) {
+      supplyWobble *= 1 + gaussian(rng) * 0.00002;   // tiny natural mint/burn
+      const noise = gaussian(rng);
+      if (!isTarget) {   // calm coin: wobbles around $1, supply barely moves
+        rows.push({ t, price: 1 + noise * CONFIG.CALM_NOISE, supply: coin.supply * supplyWobble });
+        continue;
+      }
+      let price = interp(scn.price, t) + noise * CONFIG.CALM_NOISE * interp(scn.noise, t);
+      if (scn.spikes && scn.spikes[t] !== undefined) price = scn.spikes[t];
+      const supply = coin.supply * (1 + interp(scn.supply, t) / 100) * supplyWobble;
+      rows.push({ t, price, supply });
+    }
+    data[coin.symbol] = rows;
+  }
+  return data;
+}
+
+// ---------- 4. RISK ENGINE ----------
+function stdDev(values) {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  return Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / (values.length - 1));
+}
+// Spread of minute-to-minute moves in a window, ignoring the most extreme moves.
+function trimmedMoveSpread(prices) {
+  const moves = [];
+  for (let i = 1; i < prices.length; i++) moves.push(prices[i] - prices[i - 1]);
+  if (moves.length < 5) return null;                     // not enough history yet
+  const sorted = [...moves].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const kept = moves
+    .map(m => ({ m, d: Math.abs(m - median) }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, moves.length - CONFIG.VOL_TRIM)
+    .map(x => x.m);
+  return stdDev(kept);
+}
+// The coin's "calm level" of volatility, measured once on a long calm run.
+const CALM_VOL_BASELINE = (function () {
+  const rng = makeRng(CONFIG.SEED + 999);
+  const prices = [];
+  for (let t = 0; t < 3000; t++) prices.push(1 + gaussian(rng) * CONFIG.CALM_NOISE);
+  let sum = 0, n = 0;
+  for (let i = CONFIG.VOL_WINDOW; i <= prices.length; i += 5) {
+    sum += trimmedMoveSpread(prices.slice(i - CONFIG.VOL_WINDOW, i)); n++;
+  }
+  return sum / n;
+})();
+
+function levelOf(value, amber, red) {
+  if (value > red) return 2;
+  if (value >= amber) return 1;
+  return 0;
+}
+
+// Rate one coin at reading number idx, using only readings up to idx.
+function assess(rows, idx) {
+  const now = rows[idx];
+  const devPct = (now.price - 1) * 100;
+  const priceLevel = levelOf(Math.abs(devPct), CONFIG.PRICE_AMBER, CONFIG.PRICE_RED);
+
+  const volPrices = rows.slice(Math.max(0, idx - CONFIG.VOL_WINDOW + 1), idx + 1).map(r => r.price);
+  const spread = trimmedMoveSpread(volPrices);
+  const volRatio = spread === null ? 1 : spread / CALM_VOL_BASELINE;
+  const volLevel = levelOf(volRatio, CONFIG.VOL_AMBER, CONFIG.VOL_RED);
+
+  const past = rows[Math.max(0, idx - CONFIG.SUPPLY_WINDOW)];
+  const supplyPct = (now.supply - past.supply) / past.supply * 100;
+  const supplyLevel = levelOf(Math.abs(supplyPct), CONFIG.SUPPLY_AMBER, CONFIG.SUPPLY_RED);
+
+  const level = Math.max(priceLevel, volLevel, supplyLevel);   // worst of the three
+  const r = { price: now.price, devPct, priceLevel, volRatio, volLevel, supplyPct, supplyLevel, level };
+  r.reason = explain(r);
+  return r;
+}
+
+// Plain-English reason, taken from the worst signal (price first if tied).
+function explain(r) {
+  if (r.level === 0) return 'Holding the $1 peg';
+  const dir = r.devPct < 0 ? 'below' : 'above';
+  if (r.priceLevel === r.level) return `Price ${Math.abs(r.devPct).toFixed(1)}% ${dir} $1`;
+  if (r.supplyLevel === r.level) return `Supply ${r.supplyPct < 0 ? 'down' : 'up'} ${Math.abs(r.supplyPct).toFixed(1)}% in the last hour`;
+  return `Volatility ${r.volRatio.toFixed(1)}× its calm level`;
+}
+
+// ---------- 5. TIME-IN-COLOUR ALERT RULE ----------
+function createTracker() {
+  return { amberStreak: 0, redStreak: 0, greenStreak: 0, alerted: 0 };
+}
+// Feed one new rating in; get back any alerts that should be logged now.
+function updateTracker(tr, level) {
+  tr.amberStreak = level >= 1 ? tr.amberStreak + 1 : 0;
+  tr.redStreak = level === 2 ? tr.redStreak + 1 : 0;
+  tr.greenStreak = level === 0 ? tr.greenStreak + 1 : 0;
+  if (tr.alerted > 0 && tr.greenStreak >= CONFIG.CALM_RESET) tr.alerted = 0;   // episode over
+  const out = [];
+  if (tr.amberStreak >= CONFIG.AMBER_HOLD && tr.alerted < 1) {
+    tr.alerted = 1;
+    out.push({ rating: 'AMBER', rule: 'R1', held: CONFIG.AMBER_HOLD });
+  }
+  if (tr.redStreak >= CONFIG.RED_HOLD && tr.alerted < 2) {
+    tr.alerted = 2;
+    out.push({ rating: 'RED', rule: 'R2', held: CONFIG.RED_HOLD });
+  }
+  return out;
+}
+
+// ---------- 6. TIME + MEMO TEXT ----------
+function simDate(scn, idx) {
+  return new Date(Date.parse(scn.start + ':00Z') + idx * 60000);
+}
+function simIso(scn, idx) {
+  return simDate(scn, idx).toISOString().slice(0, 16);
+}
+// Memo format (kept exactly as specified, ready for Tier 2):
+// CB|v1|<EVENT>|<COIN>|<RATING>|<detail>|rule=<id>|sim=<ISO>|scn=<A-D>
+function buildMemo(e) {
+  const dev = (e.devPct >= 0 ? '' : '-') + Math.abs(e.devPct).toFixed(2);
+  return ['CB', 'v1', e.event, e.coin, e.rating, `dev=${dev}`, `rule=${e.rule}`, `sim=${e.simIso}`, `scn=${e.scn}`].join('|');
+}
+
+// Run a whole scenario without the screen (used for testing).
+function runScenario(id) {
+  const scn = SCENARIOS[id];
+  const data = generateScenario(scn, CONFIG.SEED + id.charCodeAt(0));
+  const trackers = {}, alerts = [], worst = {};
+  COINS.forEach(c => { trackers[c.symbol] = createTracker(); worst[c.symbol] = 0; });
+  for (let i = 0; i < scn.length; i++) {
+    for (const c of COINS) {
+      const a = assess(data[c.symbol], i);
+      worst[c.symbol] = Math.max(worst[c.symbol], a.level);
+      for (const ev of updateTracker(trackers[c.symbol], a.level)) {
+        alerts.push({ t: i, coin: c.symbol, ...ev, reason: a.reason });
+      }
+    }
+  }
+  return { alerts, worst };
+}
+</script>
+
+<!-- =====================================================================
+     USER INTERFACE (player loop, cards, chart, alert log)
+     ===================================================================== -->
+<script>
+// ---------- Player state ----------
+const state = {
+  scn: null,          // the current scenario definition
+  data: null,         // its generated readings
+  idx: -1,            // index of the latest reading shown
+  playing: false,
+  speed: 60,          // 60× = one simulated minute per real second
+  carry: 0,           // fraction of the next reading already "elapsed"
+  lastTs: null,
+  trackers: {},
+  latest: {},         // latest assessment per coin
+  alerts: [],
+};
+
+const $ = id => document.getElementById(id);
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const pad = n => String(n).padStart(2, '0');
+function fmtClock(d, withSeconds) {
+  return `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()} · ` +
+         `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}${withSeconds ? ':' + pad(d.getUTCSeconds()) : ''} UTC`;
+}
+function fmtHM(d) { return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; }
+function fmtPct(v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(2) + '%'; }
+const cls = level => ['green', 'amber', 'red'][level];
+
+// ---------- Rating cards ----------
+function buildCards() {
+  $('cards').innerHTML = COINS.map(c => `
+    <article class="coin-card green" id="card-${c.symbol}">
+      <div class="coin-top">
+        <span class="coin-name">${c.symbol}</span>
+        ${c.symbol === 'USDC' ? '<span class="target-tag">SCENARIO TARGET</span>' : ''}
+        <span class="pill" id="pill-${c.symbol}">GREEN</span>
+      </div>
+      <div class="coin-price num" id="price-${c.symbol}">$1.0000</div>
+      <div class="coin-reason" id="reason-${c.symbol}">Holding the $1 peg</div>
+      <div class="signals">
+        <div class="sig"><i class="dot" id="d-price-${c.symbol}"></i>Price vs $1<span class="val num" id="v-price-${c.symbol}">—</span></div>
+        <div class="sig"><i class="dot" id="d-vol-${c.symbol}"></i>Volatility<span class="val num" id="v-vol-${c.symbol}">—</span></div>
+        <div class="sig"><i class="dot" id="d-sup-${c.symbol}"></i>Supply (last hour)<span class="val num" id="v-sup-${c.symbol}">—</span></div>
+      </div>
+      <div class="hold">
+        <span id="hold-${c.symbol}">No warning colour held</span>
+        <div class="hold-bar"><div id="holdbar-${c.symbol}"></div></div>
+      </div>
+    </article>`).join('');
+}
+
+function renderCards() {
+  for (const c of COINS) {
+    const a = state.latest[c.symbol];
+    if (!a) continue;
+    const s = c.symbol;
+    $('card-' + s).className = 'coin-card ' + cls(a.level);
+    const pill = $('pill-' + s);
+    pill.className = 'pill ' + cls(a.level);
+    pill.textContent = LEVELS[a.level];
+    $('price-' + s).textContent = '$' + a.price.toFixed(4);
+    $('reason-' + s).textContent = a.reason;
+    $('d-price-' + s).className = 'dot ' + cls(a.priceLevel);
+    $('d-vol-' + s).className = 'dot ' + cls(a.volLevel);
+    $('d-sup-' + s).className = 'dot ' + cls(a.supplyLevel);
+    $('v-price-' + s).textContent = fmtPct(a.devPct);
+    $('v-vol-' + s).textContent = a.volRatio.toFixed(1) + '× calm';
+    $('v-sup-' + s).textContent = fmtPct(a.supplyPct);
+
+    // Time-in-colour progress: how close this coin is to logging an alert.
+    const tr = state.trackers[s];
+    const bar = $('holdbar-' + s);
+    let text = 'No warning colour held', pct = 0, red = false;
+    if (tr.redStreak > 0) {
+      red = true;
+      pct = Math.min(1, tr.redStreak / CONFIG.RED_HOLD);
+      text = tr.alerted >= 2 ? `Red held ${tr.redStreak} min · alert logged (R2)`
+                             : `Red held ${tr.redStreak} of ${CONFIG.RED_HOLD} min before alert`;
+    } else if (tr.amberStreak > 0) {
+      pct = Math.min(1, tr.amberStreak / CONFIG.AMBER_HOLD);
+      text = tr.alerted >= 1 ? `Amber held ${tr.amberStreak} min · alert logged (R1)`
+                             : `Amber held ${tr.amberStreak} of ${CONFIG.AMBER_HOLD} min before alert`;
+    } else if (tr.alerted > 0) {
+      text = `Green ${tr.greenStreak} of ${CONFIG.CALM_RESET} min to close the episode`;
+    }
+    $('hold-' + s).textContent = text;
+    bar.style.width = (pct * 100) + '%';
+    bar.className = red ? 'red' : '';
+  }
+}
+
+// ---------- Chart (Chart.js) ----------
+let chart = null;
+const BAND = {
+  green: 'rgba(46,139,87,0.10)',
+  amber: 'rgba(217,140,10,0.16)',
+  red: 'rgba(192,57,43,0.10)',
+};
+// Draws the shaded rating bands and the dashed $1 line behind the price lines.
+const bandsPlugin = {
+  id: 'bands',
+  beforeDatasetsDraw(ch) {
+    const { ctx, chartArea: a, scales: { y } } = ch;
+    const g = CONFIG.PRICE_AMBER / 100, r = CONFIG.PRICE_RED / 100;
+    const fill = (lo, hi, color) => {
+      const top = Math.max(a.top, y.getPixelForValue(hi));
+      const bot = Math.min(a.bottom, y.getPixelForValue(lo));
+      if (bot > top) { ctx.fillStyle = color; ctx.fillRect(a.left, top, a.right - a.left, bot - top); }
+    };
+    ctx.save();
+    fill(-10, 1 - r, BAND.red);
+    fill(1 - r, 1 - g, BAND.amber);
+    fill(1 - g, 1 + g, BAND.green);
+    fill(1 + g, 1 + r, BAND.amber);
+    fill(1 + r, 10, BAND.red);
+    // $1 peg line
+    const py = y.getPixelForValue(1);
+    ctx.strokeStyle = '#14213d'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
+    ctx.beginPath(); ctx.moveTo(a.left, py); ctx.lineTo(a.right, py); ctx.stroke();
+    ctx.restore();
+  },
+  // Phase labels (e.g. "Sat: slide") drawn on top.
+  afterDatasetsDraw(ch) {
+    if (!state.scn || !state.scn.phases.length) return;
+    const { ctx, chartArea: a, scales: { x } } = ch;
+    ctx.save();
+    ctx.font = '600 13px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = '#5b6878';
+    ctx.strokeStyle = 'rgba(20,33,61,0.25)';
+    ctx.setLineDash([3, 4]);
+    for (const p of state.scn.phases) {
+      const px = x.getPixelForValue(p.at);
+      if (p.at > 0) { ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke(); }
+      ctx.fillText(p.label, px + 6, a.top + 16);
+    }
+    ctx.restore();
+  },
+};
+
+function initChart() {
+  if (!window.Chart) {                       // CDN failed: keep the demo running without a chart
+    $('chart').style.display = 'none';
+    $('chartFallback').style.display = 'flex';
+    return;
+  }
+  chart = new Chart($('chart'), {
+    type: 'line',
+    data: {
+      datasets: [
+        { label: 'USDC', data: [], borderColor: '#2f6fdb', borderWidth: 3, pointRadius: 0, tension: 0 },
+        { label: 'USDT', data: [], borderColor: '#7b8794', borderWidth: 2, pointRadius: 0, tension: 0 },
+      ],
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      parsing: false,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => state.scn ? fmtHM(simDate(state.scn, items[0].parsed.x)) + ' UTC' : '',
+            label: item => `${item.dataset.label}: $${item.parsed.y.toFixed(4)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'linear', min: 0, max: 119,
+          ticks: { font: { size: 13 }, maxRotation: 0, callback: v => state.scn ? fmtHM(simDate(state.scn, v)) : v },
+          grid: { color: 'rgba(0,0,0,0.05)' },
+        },
+        y: {
+          min: 0.985, max: 1.005,
+          ticks: { font: { size: 13 }, callback: v => '$' + Number(v).toFixed(3) },
+          grid: { color: 'rgba(0,0,0,0.05)' },
+        },
+      },
+    },
+    plugins: [bandsPlugin],
+  });
+}
+
+// Keep the y-axis wide enough for everything shown so far (grows as a crash unfolds).
+function fitYAxis() {
+  let lo = 1, hi = 1;
+  for (const ds of chart.data.datasets) for (const p of ds.data) { if (p.y < lo) lo = p.y; if (p.y > hi) hi = p.y; }
+  const span = Math.max(0.02, (hi - lo) * 1.15);
+  chart.options.scales.y.min = Math.min(0.985, lo - span * 0.08);
+  chart.options.scales.y.max = Math.max(1.005, hi + span * 0.05);
+}
+
+// ---------- Alert log ----------
+function renderLog() {
+  $('alertCount').textContent = state.alerts.length === 1 ? '1 alert' : `${state.alerts.length} alerts`;
+  if (!state.alerts.length) {
+    $('log').innerHTML = `<div class="log-empty">No alerts yet. A colour must hold before it counts:
+      amber for ${CONFIG.AMBER_HOLD} simulated minutes, red for ${CONFIG.RED_HOLD}.</div>`;
+    return;
+  }
+  // Newest first
+  $('log').innerHTML = [...state.alerts].reverse().map(e => `
+    <div class="log-item ${e.rating === 'RED' ? 'red' : ''}">
+      <div class="log-head">
+        <span class="log-time num">${fmtHM(e.date)}</span>
+        <b>${e.event}</b>
+        <span>${e.coin}</span>
+        <span class="mini-pill ${e.rating.toLowerCase()}">${e.rating}</span>
+        <span class="rule-tag">${e.rule}</span>
+        <span class="status" title="Blockchain recording arrives in Tier 2">not on-chain</span>
+      </div>
+      <div class="log-reason">${e.rating === 'RED' ? 'Red' : 'Amber or worse'} held ${e.held} min · ${e.reason}</div>
+      <div class="memo">${e.memo}</div>
+    </div>`).join('');
+}
+
+// ---------- Player: step, loop, controls ----------
+// Process exactly one new reading for every coin.
+function step() {
+  if (state.idx >= state.scn.length - 1) return;
+  state.idx++;
+  const i = state.idx;
+  let newAlert = false;
+  COINS.forEach((c, k) => {
+    const a = assess(state.data[c.symbol], i);
+    state.latest[c.symbol] = a;
+    for (const ev of updateTracker(state.trackers[c.symbol], a.level)) {
+      const e = {
+        event: 'ALERT', coin: c.symbol, rating: ev.rating, rule: ev.rule, held: ev.held,
+        devPct: a.devPct, reason: a.reason, date: simDate(state.scn, i),
+        simIso: simIso(state.scn, i), scn: state.scn.id,
+      };
+      e.memo = buildMemo(e);
+      state.alerts.push(e);
+      newAlert = true;
+    }
+    if (chart) chart.data.datasets[k].data.push({ x: i, y: a.price });
+  });
+  if (newAlert) renderLog();
+}
+
+function render() {
+  renderCards();
+  const d = new Date(simDate(state.scn, Math.max(0, state.idx)).getTime() + state.carry * 60000);
+  $('clock').textContent = fmtClock(d, state.speed < 60 && state.playing);
+  $('progress').style.width = ((state.idx + 1) / state.scn.length * 100) + '%';
+  if (chart) { fitYAxis(); chart.update('none'); }
+}
+
+// A steady timer (20 ticks a second) drives the player. Each tick works out how many
+// readings are due from the real time that has passed, so playback speed stays correct.
+let timer = null;
+function tick() {
+  if (!state.playing) return;
+  const now = performance.now();
+  const dt = Math.min(1, (now - state.lastTs) / 1000);       // cap catch-up after a tab switch
+  state.lastTs = now;
+  state.carry += dt * state.speed / 60;                      // readings due (1 reading = 1 sim minute)
+  while (state.carry >= 1 && state.idx < state.scn.length - 1) { state.carry -= 1; step(); }
+  if (state.idx >= state.scn.length - 1) { state.carry = 0; finish(); }
+  render();
+}
+
+function setPlaying(on) {
+  if (on && state.idx >= state.scn.length - 1) reset();      // pressing Play at the end restarts
+  state.playing = on;
+  state.lastTs = performance.now();
+  $('playBtn').textContent = on ? '❚❚ Pause' : '▶ Play';
+  clearInterval(timer);
+  if (on) timer = setInterval(tick, 50);
+  else render();
+}
+
+function finish() {
+  state.playing = false;
+  clearInterval(timer);
+  $('playBtn').textContent = '▶ Play';
+  const n = state.alerts.length;
+  let msg = `Scenario finished · ${n} alert${n === 1 ? '' : 's'} logged.`;
+  if (state.scn.id === 'B') msg += ' The red flicker never held long enough, so the time-in-colour rule filtered it out.';
+  if (state.scn.id === 'A') msg += ' No false alarms on a calm day.';
+  if (state.scn.id === 'C') msg += ' USDC went amber, then red, then recovered to green.';
+  if (state.scn.id === 'D') msg += ' The supply signal raised the alarm before the price moved.';
+  $('finish').textContent = msg;
+  $('finish').style.display = 'block';
+}
+
+function reset() {
+  state.playing = false;
+  clearInterval(timer);
+  $('playBtn').textContent = '▶ Play';
+  $('finish').style.display = 'none';
+  state.data = generateScenario(state.scn, CONFIG.SEED + state.scn.id.charCodeAt(0));
+  state.idx = -1;
+  state.carry = 0;
+  state.alerts = [];
+  state.latest = {};
+  COINS.forEach(c => { state.trackers[c.symbol] = createTracker(); });
+  if (chart) {
+    chart.data.datasets.forEach(ds => { ds.data = []; });
+    chart.options.scales.x.max = state.scn.length - 1;
+  }
+  step();                 // show the first reading straight away
+  renderLog();
+  render();
+}
+
+function loadScenario(id) {
+  state.scn = SCENARIOS[id];
+  $('scenario').value = id;
+  $('scnDesc').textContent = state.scn.desc;
+  $('scnExpect').textContent = state.scn.expect;
+  $('scnStylised').textContent = state.scn.stylised || '';
+  reset();
+}
+
+function setSpeed(s) {
+  state.speed = s;
+  document.querySelectorAll('#speed button').forEach(b => b.classList.toggle('active', Number(b.dataset.speed) === s));
+}
+
+// ---------- Wire up the page ----------
+$('scenario').innerHTML = Object.values(SCENARIOS).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+$('scenario').addEventListener('change', e => loadScenario(e.target.value));
+$('playBtn').addEventListener('click', () => setPlaying(!state.playing));
+$('resetBtn').addEventListener('click', reset);
+document.querySelectorAll('#speed button').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); }
+  else if (e.key === 'r' || e.key === 'R') reset();
+  else if (['1', '2', '3', '4'].includes(e.key)) loadScenario('ABCD'[Number(e.key) - 1]);
+});
+
+buildCards();
+initChart();
+setSpeed(60);
+loadScenario('C');       // open on the main demo scenario
+</script>
+</body>
+</html>
